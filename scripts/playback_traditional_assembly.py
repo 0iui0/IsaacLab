@@ -138,9 +138,9 @@ class TraditionalPegInHoleController:
             dof_pos=env.joint_pos,
             dof_vel=env.joint_vel,
             fingertip_midpoint_pos=fingertip_pos,
-            fingertip_midpoint_quat=fingingertip_quat,
-            fingertip_midpoint_linvel=fingip_linvel,
-            fingertip_midpoint_angvel=finging_angvel,
+            fingertip_midpoint_quat=fingertip_quat,
+            fingertip_midpoint_linvel=fingertip_linvel,
+            fingertip_midpoint_angvel=fingertip_angvel,
             jacobian=jacobian,
             arm_mass_matrix=arm_mass_matrix,
             ctrl_target_fingertip_midpoint_pos=ctrl_target_pos,
@@ -239,7 +239,7 @@ class TraditionalPegInHoleController:
                 # Check if insertion is complete
                 if self.insertion_success[env_id]:
                     self.current_phase[env_id] = self.PHASE_COMPLETE
-                    self.phase_timer[envId] = 0.0
+                    self.phase_timer[env_id] = 0.0
 
             elif current_phase == self.PHASE_COMPLETE:
                 # Task done
