@@ -364,8 +364,14 @@ class ForgeAssemblyAction(ActionTerm):
         # jacobians shape: (num_envs, num_bodies-1, 6, num_joints)
         # body_idx needs -1 because jacobians exclude the base body
         jacobian = self._robot.data.jacobians[:, self._body_idx - 1]
-        # Select only arm joint columns
-        return jacobian[:, :, self._joint_ids[0]:self._joint_ids[-1] + 1]
+        # Direct forge uses hardcoded [:, 0:6, 0:7] for 7-DOF arm
+        # Use index_select for robustness if joint_ids are non-contiguous
+        if len(self._joint_ids) == 7 and self._joint_ids[0] == 0 and self._joint_ids[-1] == 6:
+            # Optimized: direct slice for contiguous [0, 1, 2, 3, 4, 5, 6]
+            return jacobian[:, :, 0:7]
+        else:
+            # Fallback: index_select for non-contiguous joint_ids
+            return jacobian.index_select(2, torch.tensor(self._joint_ids, device=self.device))
 
     def _get_mass_matrix_subset(self) -> torch.Tensor:
         """Get mass matrix subset for arm joints only."""
