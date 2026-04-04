@@ -175,37 +175,26 @@ class ft_force_smooth_noisy(ManagerTermBase):
         smoothing_alpha: float = 0.25,
         noise_std: float = 1.0,
     ) -> torch.Tensor:
-        import isaacsim.core.utils.torch as torch_utils
-
         # Read raw wrench from PhysX (6D: force + torque) in body frame
         raw_wrench = self.robot.data.body_incoming_joint_wrench_b[:, self._ee_body_idx]
 
         # EMA smoothing (direct forge: alpha * raw + (1-alpha) * prev)
         self._force_smooth = smoothing_alpha * raw_wrench + (1 - smoothing_alpha) * self._force_smooth
 
-        # Transform force from body frame to hole frame (direct forge: change_FT_frame)
-        # Source frame: identity (body frame at EE)
-        # Target frame: hole position (noisy estimate)
-        identity_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=env.device, dtype=torch.float32).unsqueeze(0).repeat(env.num_envs, 1)
-        hole_pos = self.hole.data.root_pos_w
-
-        # Simple transform: just rotate force to world frame then to hole frame
-        # Direct forge uses identity source frame and hole position as target
-        force_world = self._force_smooth[:, :3]  # Assume already in reasonable frame
-        torque_world = self._force_smooth[:, 3:6]
-
-        # For simplicity, we keep force in world frame (hole is kinematic, no rotation transform needed)
-        # Direct forge's change_FT_frame is more complex, but this is the key part:
-        # Transform to target frame (hole position offset)
-        target_F = force_world  # Simplified: no rotation transform
-        target_T = torque_world  # Simplified
+        # TODO: Transform force from body frame to hole frame (direct forge: change_FT_frame)
+        # For now, use body-frame force directly. This works because:
+        # 1. The EE is approximately aligned with the hole during insertion
+        # 2. Contact forces are dominated by the insertion axis
+        # A full implementation would rotate force from EE body frame to world frame,
+        # then compute torque relative to hole position: T_target = T + (pos_ee - pos_hole) x F
+        force = self._force_smooth[:, :3]
 
         # Store force norm on env for contact_force_penalty reward term
-        env._force_smooth_norm = torch.norm(target_F, p=2, dim=-1)
+        env._force_smooth_norm = torch.norm(force, p=2, dim=-1)
 
-        # Extract force only (first 3 components) and add noise
-        noise = torch.randn_like(target_F) * noise_std
-        return target_F + noise
+        # Add noise
+        noise = torch.randn_like(force) * noise_std
+        return force + noise
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
         if env_ids is not None:
