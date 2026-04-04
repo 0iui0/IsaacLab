@@ -346,52 +346,56 @@ class RewardsCfg:
     """Rewards matching direct forge's multi-scale keypoint + contact penalty."""
 
     # Multi-scale keypoint tracking (forge core reward)
-    # Baseline: wide squashing
+    # Direct forge uses squashing_fn: 1/(exp(a*d) + b + exp(-a*d)) with weight +1.0
+    # Baseline: wide (slow decay)
     keypoint_baseline = RewTerm(
-        func=mdp.keypoint_peg_hole_error,
-        weight=-1.5,
-        params={"keypoint_scale": 0.15, "squash_a": 10.0, "squash_b": 5.0},
-    )
-    # Coarse: medium squashing
-    keypoint_coarse = RewTerm(
-        func=mdp.keypoint_peg_hole_error,
-        weight=-1.5,
-        params={"keypoint_scale": 0.15, "squash_a": 25.0, "squash_b": 5.0},
-    )
-    # Fine: tight squashing
-    keypoint_fine = RewTerm(
-        func=mdp.keypoint_peg_hole_error,
-        weight=-1.5,
-        params={"keypoint_scale": 0.15, "squash_a": 45.0, "squash_b": 10.0},
-    )
-
-    # Exponential keypoint reward
-    keypoint_exp = RewTerm(
         func=mdp.keypoint_peg_hole_error_exp,
-        weight=1.5,
+        weight=1.0,
         params={
-            "kp_exp_coeffs": [(50, 0.0001), (300, 0.0001)],
+            "kp_exp_coeffs": [(5, 4)],
+            "kp_use_sum_of_exps": False,
+            "keypoint_scale": 0.15,
+        },
+    )
+    # Coarse: medium decay
+    keypoint_coarse = RewTerm(
+        func=mdp.keypoint_peg_hole_error_exp,
+        weight=1.0,
+        params={
+            "kp_exp_coeffs": [(50, 2)],
+            "kp_use_sum_of_exps": False,
+            "keypoint_scale": 0.15,
+        },
+    )
+    # Fine: tight (fast decay)
+    keypoint_fine = RewTerm(
+        func=mdp.keypoint_peg_hole_error_exp,
+        weight=1.0,
+        params={
+            "kp_exp_coeffs": [(100, 0)],
             "kp_use_sum_of_exps": False,
             "keypoint_scale": 0.15,
         },
     )
 
     # Contact force penalty (forge: contact_penalty)
+    # Direct forge PegInsert: contact_penalty_scale = 0.2
     contact_penalty = RewTerm(
         func=mdp.contact_force_penalty,
         weight=-0.2,
     )
 
     # Action penalty (forge: action_penalty_ee) - from isaaclab.envs.mdp
-    action_penalty = RewTerm(func=mdp.action_l2, weight=-1.0e-5)
+    # Direct forge: action_penalty_ee_scale = 0.0 (disabled!)
+    action_penalty = RewTerm(func=mdp.action_l2, weight=-0.0)
 
     # Action gradient penalty (forge: action_grad_penalty) - from isaaclab.envs.mdp
-    action_grad_penalty = RewTerm(func=mdp.action_rate_l2, weight=-1.0e-5)
+    action_grad_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.1)
 
     # Asset-relative action penalty (forge: action_penalty_asset)
     action_penalty_asset = RewTerm(
         func=mdp.action_penalty_asset,
-        weight=-0.2,
+        weight=-0.001,
     )
 
 
