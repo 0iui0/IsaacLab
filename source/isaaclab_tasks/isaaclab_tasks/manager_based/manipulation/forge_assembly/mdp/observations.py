@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import torch
 
 from isaaclab.assets import Articulation, RigidObject
@@ -37,17 +38,34 @@ class ee_pos_rel_hole(ManagerTermBase):
         body_name = cfg.params.get("body_name", "panda_hand")
         body_ids, _ = self.robot.find_bodies(body_name)
         self._ee_body_idx = body_ids[0]
+        # Fixed asset position observation noise (direct forge: 0.001 diagonal)
+        self._fixed_pos_obs_noise = torch.zeros(env.num_envs, 3, device=env.device)
 
     def __call__(self, env: ManagerBasedRLEnv, body_name: str = "panda_hand") -> torch.Tensor:
         ee_pos = self.robot.data.body_pos_w[:, self._ee_body_idx]
         hole_pos = self.hole.data.root_pos_w
-        return ee_pos - hole_pos - env.scene.env_origins
+        # Direct forge: subtract (fixed_pos_obs_frame + init_fixed_pos_obs_noise)
+        return ee_pos - hole_pos - self._fixed_pos_obs_noise - env.scene.env_origins
+
+    def reset(self, env_ids: torch.Tensor | None = None) -> None:
+        # Randomize fixed asset position noise on reset (direct forge: diag(0.001))
+        if env_ids is not None:
+            noise = torch.randn(len(env_ids), 3, device=self.robot.device) * 0.001
+            self._fixed_pos_obs_noise[env_ids] = noise
+        else:
+            self._fixed_pos_obs_noise = torch.randn(
+                self.robot.num_instances, 3, device=self.robot.device
+            ) * 0.001
 
 
 class ee_quat_canonical(ManagerTermBase):
-    """End-effector orientation as canonical quaternion (w > 0).
+    """End-effector orientation as quaternion with flip and rotation noise.
 
-    Direct forge equivalent: fingertip_quat (with flip quaternions applied).
+    Direct forge equivalent: fingertip_quat (with flip quaternions + rotation noise).
+    - Applies random ±1 flip (flip_quats)
+    - Adds 0.1° rotation noise with random axis
+    - Zeros quaternion components [0, 3] (x and w) after noise (direct forge convention)
+    - Does NOT canonicalize (no w > 0 enforcement)
     Returns 4D quaternion (w, x, y, z).
     """
 
@@ -57,15 +75,28 @@ class ee_quat_canonical(ManagerTermBase):
         body_name = cfg.params.get("body_name", "panda_hand")
         body_ids, _ = self.robot.find_bodies(body_name)
         self._ee_body_idx = body_ids[0]
+        self._rot_noise_level_deg = 0.1  # Direct forge: fingertip_rot_deg = 0.1
 
     def __call__(self, env: ManagerBasedRLEnv, body_name: str = "panda_hand") -> torch.Tensor:
+        from isaaclab.utils.math import quat_from_angle_axis, quat_mul
+
         quat = self.robot.data.body_quat_w[:, self._ee_body_idx].clone()
+
         # Apply flip quaternions (random ±1, direct forge: flip_quats)
         if hasattr(env, "_flip_quats"):
             quat = quat * env._flip_quats.unsqueeze(-1)
-        # Canonicalize: ensure w > 0
-        w_neg = quat[:, 0] < 0
-        quat[w_neg] = -quat[w_neg]
+
+        # Add rotation noise: 0.1° with random axis (direct forge: rot_noise_level_deg = 0.1)
+        rot_noise_axis = torch.randn(env.num_envs, 3, device=env.device)
+        rot_noise_axis = rot_noise_axis / (torch.norm(rot_noise_axis, dim=-1, keepdim=True) + 1e-8)
+        rot_noise_angle = torch.randn(env.num_envs, device=env.device) * np.deg2rad(self._rot_noise_level_deg)
+        rot_noise_quat = quat_from_angle_axis(rot_noise_angle, rot_noise_axis)
+        quat = quat_mul(quat, rot_noise_quat)
+
+        # Zero quaternion components [0, 3] (x and w) - direct forge convention
+        quat[:, 0] = 0.0  # w component
+        quat[:, 3] = 0.0  # z component
+
         return quat
 
 
@@ -82,7 +113,9 @@ class ee_linvel_fd(ManagerTermBase):
         body_name = cfg.params.get("body_name", "panda_hand")
         body_ids, _ = self.robot.find_bodies(body_name)
         self._ee_body_idx = body_ids[0]
-        self._prev_pos = self.robot.data.body_pos_w[:, self._ee_body_idx].clone()
+        # prev_pos should be noisy (direct forge uses noisy fingertip positions)
+        ee_pos = self.robot.data.body_pos_w[:, self._ee_body_idx]
+        self._prev_pos = ee_pos + torch.randn_like(ee_pos) * 0.00025
 
     def __call__(self, env: ManagerBasedRLEnv, body_name: str = "panda_hand") -> torch.Tensor:
         ee_pos = self.robot.data.body_pos_w[:, self._ee_body_idx]
@@ -97,9 +130,11 @@ class ee_linvel_fd(ManagerTermBase):
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
         if env_ids is not None:
-            self._prev_pos[env_ids] = self.robot.data.body_pos_w[env_ids, self._ee_body_idx].clone()
+            ee_pos = self.robot.data.body_pos_w[env_ids, self._ee_body_idx]
+            self._prev_pos[env_ids] = ee_pos + torch.randn_like(ee_pos) * 0.00025
         else:
-            self._prev_pos = self.robot.data.body_pos_w[:, self._ee_body_idx].clone()
+            ee_pos = self.robot.data.body_pos_w[:, self._ee_body_idx]
+            self._prev_pos = ee_pos + torch.randn_like(ee_pos) * 0.00025
 
 
 class ee_angvel_fd(ManagerTermBase):
@@ -121,8 +156,7 @@ class ee_angvel_fd(ManagerTermBase):
             env._flip_quats = torch.ones(env.num_envs, device=env.device)
 
     def __call__(self, env: ManagerBasedRLEnv, body_name: str = "panda_hand") -> torch.Tensor:
-        from isaaclab.utils.math import axis_angle_from_quat
-        import isaacsim.core.utils.torch as torch_utils
+        from isaaclab.utils.math import axis_angle_from_quat, quat_conjugate, quat_mul
 
         curr_quat = self.robot.data.body_quat_w[:, self._ee_body_idx].clone()
         # Apply flip quaternions (direct forge: noisy_fingertip_quat * flip_quats)
@@ -131,7 +165,7 @@ class ee_angvel_fd(ManagerTermBase):
         dt = env.step_dt
 
         # Compute rotation difference
-        diff_quat = torch_utils.quat_mul(curr_quat, torch_utils.quat_conjugate(self._prev_quat))
+        diff_quat = quat_mul(curr_quat, quat_conjugate(self._prev_quat))
         diff_quat *= torch.sign(diff_quat[:, 0]).unsqueeze(-1)
         axis_angle = axis_angle_from_quat(diff_quat)
         angvel = axis_angle / dt
@@ -150,10 +184,10 @@ class ee_angvel_fd(ManagerTermBase):
 
 
 class ft_force_smooth_noisy(ManagerTermBase):
-    """Force sensor reading: EMA-smoothed with Gaussian noise.
+    """Force sensor reading: EMA-smoothed with Gaussian noise, frame-transformed.
 
     Direct forge equivalent: ft_force observation. Reads 6D wrench from EE body,
-    applies EMA smoothing, transforms to hole frame, adds noise.
+    applies EMA smoothing, transforms to hole frame via change_FT_frame, adds noise.
     Returns 3D force vector (force component only).
     """
 
@@ -168,6 +202,29 @@ class ft_force_smooth_noisy(ManagerTermBase):
         self._noise_std = cfg.params.get("noise_std", 1.0)
         self._force_smooth = torch.zeros(env.num_envs, 6, device=env.device)
 
+    def _change_FT_frame(self, source_F, source_T, source_pos, source_quat, target_pos, target_quat):
+        """Transform force/torque from source frame to target frame.
+
+        Direct forge equivalent: change_FT_frame (Modern Robotics eq. 3.95).
+        Transforms wrench from EE body frame to hole (fixed asset) frame.
+        """
+        from isaaclab.utils.math import quat_conjugate, quat_mul, quat_rotate
+
+        # Compute relative transform: target_T_source
+        source_quat_inv = quat_conjugate(source_quat)
+        rel_pos = source_pos - target_pos
+        # Rotate relative position to target frame
+        rel_pos_target = quat_rotate(target_quat, rel_pos)
+
+        # Rotate force to target frame: F_target = R_target * R_source^T * F_source
+        source_F_world = quat_rotate(source_quat, source_F)  # source to world
+        target_F = quat_rotate(quat_conjugate(target_quat), source_F_world)  # world to target
+
+        # Transform torque: T_target = R * T_source + r × F_target
+        source_T_world = quat_rotate(source_quat, source_T)
+        target_T = quat_rotate(quat_conjugate(target_quat), source_T_world) + torch.cross(rel_pos_target, target_F, dim=-1)
+        return target_F, target_T
+
     def __call__(
         self,
         env: ManagerBasedRLEnv,
@@ -181,20 +238,22 @@ class ft_force_smooth_noisy(ManagerTermBase):
         # EMA smoothing (direct forge: alpha * raw + (1-alpha) * prev)
         self._force_smooth = smoothing_alpha * raw_wrench + (1 - smoothing_alpha) * self._force_smooth
 
-        # TODO: Transform force from body frame to hole frame (direct forge: change_FT_frame)
-        # For now, use body-frame force directly. This works because:
-        # 1. The EE is approximately aligned with the hole during insertion
-        # 2. Contact forces are dominated by the insertion axis
-        # A full implementation would rotate force from EE body frame to world frame,
-        # then compute torque relative to hole position: T_target = T + (pos_ee - pos_hole) x F
-        force = self._force_smooth[:, :3]
+        # Transform force from EE body frame to hole frame (direct forge: change_FT_frame)
+        ee_pos = self.robot.data.body_pos_w[:, self._ee_body_idx]
+        ee_quat = self.robot.data.body_quat_w[:, self._ee_body_idx]
+        hole_pos = self.hole.data.root_pos_w
+        hole_quat = self.hole.data.root_quat_w
+
+        source_F = self._force_smooth[:, :3]
+        source_T = self._force_smooth[:, 3:6]
+        target_F, _ = self._change_FT_frame(source_F, source_T, ee_pos, ee_quat, hole_pos, hole_quat)
 
         # Store force norm on env for contact_force_penalty reward term
-        env._force_smooth_norm = torch.norm(force, p=2, dim=-1)
+        env._force_smooth_norm = torch.norm(target_F, p=2, dim=-1)
 
         # Add noise
-        noise = torch.randn_like(force) * noise_std
-        return force + noise
+        noise = torch.randn_like(target_F) * noise_std
+        return target_F + noise
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
         if env_ids is not None:

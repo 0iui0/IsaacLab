@@ -57,7 +57,7 @@ class FrankaForgeAssemblyEnvCfg(ForgeAssemblyEnvCfg):
             rot_action_bounds=[0.097, 0.097, 0.097],
             default_task_prop_gains=[565.0, 565.0, 565.0, 28.0, 28.0, 28.0],
             default_dead_zone=[5.0, 5.0, 5.0, 1.0, 1.0, 1.0],
-            pos_action_threshold=[0.02, 0.02, 0.02],
+            pos_action_threshold=[0.05, 0.05, 0.05],
             rot_action_threshold=[0.097, 0.097, 0.097],
             ema_factor_range=[0.025, 0.1],
             task_prop_gains_noise_level=0.41,

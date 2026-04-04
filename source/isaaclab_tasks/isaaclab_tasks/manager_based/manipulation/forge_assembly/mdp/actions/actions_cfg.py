@@ -42,8 +42,8 @@ class ForgeAssemblyActionCfg(ActionTermCfg):
     """Name of the peg (held asset) rigid body in the scene."""
 
     # Action bounds
-    pos_action_bounds: list[float] = [0.02, 0.02, 0.02]
-    """Position action scaling bounds."""
+    pos_action_bounds: list[float] = [0.05, 0.05, 0.05]
+    """Position action scaling bounds (direct forge: 0.05)."""
 
     rot_action_bounds: list[float] = [0.097, 0.097, 0.097]
     """Rotation action scaling bounds."""
@@ -55,8 +55,8 @@ class ForgeAssemblyActionCfg(ActionTermCfg):
     default_dead_zone: list[float] = [5.0, 5.0, 5.0, 1.0, 1.0, 1.0]
     """Default dead zone thresholds [fx, fy, fz, tx, ty, tz]."""
 
-    pos_action_threshold: list[float] = [0.02, 0.02, 0.02]
-    """Default position clipping threshold."""
+    pos_action_threshold: list[float] = [0.05, 0.05, 0.05]
+    """Default position clipping threshold (direct forge: 0.05)."""
 
     rot_action_threshold: list[float] = [0.097, 0.097, 0.097]
     """Default rotation clipping threshold."""
