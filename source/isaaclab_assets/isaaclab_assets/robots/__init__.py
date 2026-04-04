@@ -13,6 +13,7 @@ from .allegro import *
 from .ant import *
 from .anymal import *
 from .cart_double_pendulum import *
+from .dobot import *
 from .cartpole import *
 from .cassie import *
 from .fourier import *
@@ -22,6 +23,7 @@ from .humanoid import *
 from .humanoid_28 import *
 from .kinova import *
 from .kuka_allegro import *
+from .marvin import *
 from .pick_and_place import *
 from .quadcopter import *
 from .ridgeback_franka import *

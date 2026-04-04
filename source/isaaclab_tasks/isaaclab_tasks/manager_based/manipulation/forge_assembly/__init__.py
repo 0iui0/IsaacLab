@@ -3,7 +3,6 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Manipulation environments for fixed-arm robots."""
+"""Peg-in-hole assembly environments using the forge strategy."""
 
-from .forge_assembly import *  # noqa
-from .reach import *  # noqa
+from .config.franka import *  # noqa: F401, F403

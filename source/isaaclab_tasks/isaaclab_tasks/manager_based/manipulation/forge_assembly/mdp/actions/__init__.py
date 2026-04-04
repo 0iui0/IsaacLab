@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Manipulation environments for fixed-arm robots."""
+"""Action terms for the forge assembly environment."""
 
-from .forge_assembly import *  # noqa
-from .reach import *  # noqa
+from .actions_cfg import *  # noqa: F401, F403
+from .forge_actions import *  # noqa: F401, F403
