@@ -186,7 +186,7 @@ class randomize_task_gains(ManagerTermBase):
         if default_task_prop_gains is None:
             default_task_prop_gains = [565.0, 565.0, 565.0, 28.0, 28.0, 28.0]
 
-        if not hasattr(env, "_task_prop_gains"):
+        if not hasattr(env, "_task_prop_gains") or not hasattr(env, "_task_deriv_gains"):
             env._task_prop_gains = torch.zeros(env.num_envs, 6, device=env.device)
             env._task_deriv_gains = torch.zeros(env.num_envs, 6, device=env.device)
 
