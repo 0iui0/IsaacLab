@@ -1,0 +1,33 @@
+services:
+  isaac-lab-forge:
+    image: nvcr.io/nvidia/isaac-lab:2.3.2
+    container_name: isaac-lab-forge
+    entrypoint: bash
+    tty: true
+    stdin_open: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - ACCEPT_EULA=Y
+      - PRIVACY_CONSENT=Y
+      - DISPLAY=${DISPLAY:-}
+    network_mode: host
+    volumes:
+      # Isaac Sim caches
+      - ~/docker/isaac-sim/cache/kit:/isaac-sim/kit/cache:rw
+      - ~/docker/isaac-sim/cache/ov:/root/.cache/ov:rw
+      - ~/docker/isaac-sim/cache/pip:/root/.cache/pip:rw
+      - ~/docker/isaac-sim/cache/glcache:/root/.cache/nvidia/GLCache:rw
+      - ~/docker/isaac-sim/cache/computecache:/root/.nv/ComputeCache:rw
+      - ~/docker/isaac-sim/logs:/root/.nvidia-omniverse/logs:rw
+      - ~/docker/isaac-sim/data:/root/.local/share/ov/data:rw
+      - ~/docker/isaac-sim/documents:/root/Documents:rw
+      # Mount local IsaacLab source for development
+      - /home/an/IsaacLab:/workspace/IsaacLab:rw
+      # SDK URDF source (read-only)
+      - /home/an/TJ_FX_ROBOT_CONTRL_SDK:/workspace/SDK:ro
