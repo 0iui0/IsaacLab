@@ -6,3 +6,4 @@
 """Peg-in-hole assembly environments using the forge strategy."""
 
 from .config.franka import *  # noqa: F401, F403
+from .config.marvin_m6 import *  # noqa: F401, F403
