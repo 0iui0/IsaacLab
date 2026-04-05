@@ -106,9 +106,9 @@ class ForgeAssemblyAction(ActionTerm):
         # Flip quaternions for observation noise
         self._flip_quats = torch.ones(self.num_envs, device=self.device)
 
-        # Peg tracking: the peg must follow the EE every step (direct forge uses a D6 joint)
-        self._peg: RigidObject = env.scene["peg"]
-        self._peg_offset = torch.tensor([0.0, 0.0, 0.05], device=self.device, dtype=torch.float32)
+        # Peg is a free rigid body (not teleported).
+        # In direct forge, the peg is placed at EE + offset on reset, then
+        # held by gripper friction. We track peg for observation/reward access only.
 
     """
     Properties.
@@ -282,18 +282,11 @@ class ForgeAssemblyAction(ActionTerm):
         # Apply to robot
         self._robot.set_joint_effort_target(dof_torque, joint_ids=self._joint_ids)
 
-        # --- Peg tracking: teleport peg to EE + offset every step ---
-        # In direct forge, the peg is attached via a D6 fixed joint.
-        # Here we write the peg's root state to match EE pose + offset.
-        peg_pos = ee_pos + self._offset_world(ee_quat)
-        peg_vel = torch.cat([ee_linvel, ee_angvel], dim=-1)  # (N, 6)
-        # Build full root state: pos(3) + quat(4) + linvel(3) + angvel(3) = 13
-        root_state = torch.zeros(self.num_envs, 13, device=self.device)
-        root_state[:, :3] = peg_pos
-        root_state[:, 3:7] = ee_quat
-        root_state[:, 7:10] = peg_vel[:, :3]
-        root_state[:, 10:13] = peg_vel[:, 3:6]
-        self._peg.write_root_state_to_sim(root_state)
+        # --- Peg tracking removed ---
+        # In direct forge, the peg is a free rigid body held by gripper friction.
+        # It is NOT teleported to EE every step. Physics handles the grip.
+        # The peg is placed at EE + offset on reset (via reset_peg_to_ee event)
+        # and then the gripper closes around it for 0.25s to establish friction.
 
         # Store prev actions
         self._prev_actions[:] = self._processed_actions
@@ -412,11 +405,6 @@ class ForgeAssemblyAction(ActionTerm):
         """Get hole position from scene."""
         hole: RigidObject = self._env.scene["hole"]
         return hole.data.root_pos_w
-
-    def _offset_world(self, ee_quat: torch.Tensor) -> torch.Tensor:
-        """Rotate peg offset from EE local frame to world frame."""
-        from isaaclab.utils.math import quat_apply
-        return quat_apply(ee_quat, self._peg_offset.unsqueeze(0).expand(self.num_envs, -1))
 
     @staticmethod
     def _wrap_yaw(yaw: torch.Tensor) -> torch.Tensor:

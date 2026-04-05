@@ -196,94 +196,58 @@ class action_penalty_asset(ManagerTermBase):
         return pos_error_norm + yaw_error_norm
 
 
-class peg_hole_proximity(ManagerTermBase):
-    """Positive reward for peg approaching hole (proximity-based).
+class peg_insertion_engaged(ManagerTermBase):
+    """Binary bonus when peg is inserted > 90% of hole depth.
 
-    Since the hole is currently a solid cylinder (no hollow USD mesh available),
-    physical insertion is impossible. This reward provides a dense positive signal
-    for the peg getting close to the hole center, measured by 3D distance.
-
-    Uses exponential shaping: r = exp(-distance / sigma) so reward increases
-    smoothly as the peg approaches. This bootstraps learning before success_pred
-    can activate (which requires 25% success rate first).
-
-    This replaces the need for keypoint rewards or success-based rewards when
-    the hole geometry prevents physical insertion.
+    Direct forge equivalent: curr_engaged reward (weight +1.0).
+    Success = xy_dist < 2.5mm AND z_disp < height * engage_threshold (0.9).
+    Peg insert: height=0.025, engage_threshold=0.9 → z_disp < 0.0225m.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self.peg: RigidObject = env.scene["peg"]
         self.hole: RigidObject = env.scene["hole"]
+        self._xy_threshold = 0.0025  # 2.5mm
+        self._engage_threshold = 0.9  # 90% of hole height
 
-    def __call__(
-        self,
-        env: ManagerBasedRLEnv,
-        sigma: float = 0.005,
-    ) -> torch.Tensor:
-        peg_pos = self.peg.data.root_pos_w - env.scene.env_origins
-        hole_pos = self.hole.data.root_pos_w - env.scene.env_origins
-
-        dist = torch.linalg.vector_norm(peg_pos[:, :3] - hole_pos[:, :3], dim=1)
-        reward = torch.exp(-dist / sigma)
-
-        # Store for logging
-        env._peg_hole_dist = dist
-        return reward
-
-
-class peg_hole_xy_alignment(ManagerTermBase):
-    """Positive reward for xy alignment between peg and hole.
-
-    Rewards the policy for centering the peg above the hole, independent of z.
-    This is a key sub-skill for insertion that provides a denser signal than
-    full 3D proximity alone.
-    """
-
-    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
-        super().__init__(cfg, env)
-        self.peg: RigidObject = env.scene["peg"]
-        self.hole: RigidObject = env.scene["hole"]
-
-    def __call__(
-        self,
-        env: ManagerBasedRLEnv,
-        sigma: float = 0.005,
-    ) -> torch.Tensor:
+    def __call__(self, env: ManagerBasedRLEnv) -> torch.Tensor:
         peg_pos = self.peg.data.root_pos_w - env.scene.env_origins
         hole_pos = self.hole.data.root_pos_w - env.scene.env_origins
 
         xy_dist = torch.linalg.vector_norm(peg_pos[:, :2] - hole_pos[:, :2], dim=1)
-        return torch.exp(-xy_dist / sigma)
+        z_disp = peg_pos[:, 2] - hole_pos[:, 2]
+
+        is_centered = xy_dist < self._xy_threshold
+        is_engaged = z_disp < (0.025 * self._engage_threshold)
+        return torch.logical_and(is_centered, is_engaged).float()
 
 
-class peg_hole_z_alignment(ManagerTermBase):
-    """Positive reward for z descent of peg towards hole.
+class peg_insertion_success(ManagerTermBase):
+    """Binary bonus when peg is fully inserted.
 
-    Rewards the policy for lowering the peg towards the hole center height.
-    Only activates when xy alignment is already good (within 5mm).
+    Direct forge equivalent: curr_success reward (weight +1.0).
+    Success = xy_dist < 2.5mm AND z_disp < height * success_threshold (0.04).
+    Peg insert: height=0.025, success_threshold=0.04 → z_disp < 0.001m.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self.peg: RigidObject = env.scene["peg"]
         self.hole: RigidObject = env.scene["hole"]
+        self._xy_threshold = 0.0025  # 2.5mm
+        self._success_threshold = 0.04  # 4% of hole height
 
-    def __call__(
-        self,
-        env: ManagerBasedRLEnv,
-        sigma: float = 0.003,
-        xy_gate: float = 0.005,
-    ) -> torch.Tensor:
+    def __call__(self, env: ManagerBasedRLEnv) -> torch.Tensor:
         peg_pos = self.peg.data.root_pos_w - env.scene.env_origins
         hole_pos = self.hole.data.root_pos_w - env.scene.env_origins
 
         xy_dist = torch.linalg.vector_norm(peg_pos[:, :2] - hole_pos[:, :2], dim=1)
-        z_dist = torch.abs(peg_pos[:, 2] - hole_pos[:, 2])
+        z_disp = peg_pos[:, 2] - hole_pos[:, 2]
 
-        # Only reward z approach when xy is already aligned
-        gate = (xy_dist < xy_gate).float()
-        return torch.exp(-z_dist / sigma) * gate
+        is_centered = xy_dist < self._xy_threshold
+        is_below = z_disp < (0.025 * self._success_threshold)
+        return torch.logical_and(is_centered, is_below).float()
 
 
 class success_prediction_penalty(ManagerTermBase):

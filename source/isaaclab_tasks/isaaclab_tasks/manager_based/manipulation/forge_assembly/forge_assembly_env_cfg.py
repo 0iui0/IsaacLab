@@ -353,69 +353,31 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Rewards matching direct forge's reward structure exactly.
+    """Rewards matching direct forge's FULL reward structure.
 
-    Direct forge overrides FactoryEnv.compute_reward and uses ONLY:
-    - action_penalty_asset: pos_error + rot_error (scale -0.001)
-    - contact_penalty: relu(||force|| - threshold) (scale -0.2)
-    - success_pred_error: |true_success - predicted| (scale -1.0 after delay)
+    Direct forge calls super()._get_rewards() from FactoryEnv, which provides:
+    - kp_baseline (+1.0): squashing_fn(keypoint_dist, a=5, b=4)
+    - kp_coarse (+1.0): squashing_fn(keypoint_dist, a=50, b=2)
+    - kp_fine (+1.0): squashing_fn(keypoint_dist, a=100, b=0)
+    - action_penalty_ee (0.0, disabled)
+    - action_grad_penalty (0.0, disabled in forge)
+    - curr_engaged (+1.0): binary when insertion > 90% depth
+    - curr_success (+1.0): binary when fully inserted
 
-    Factory keypoint rewards (kp_baseline/coarse/fine) and action_grad_penalty
-    are NOT used by forge — they are disabled here.
+    Then forge_env._get_rewards() adds ON TOP:
+    - action_penalty_asset (-0.001): pos_error + rot_error
+    - contact_penalty (-0.2): relu(force - threshold)
+    - success_pred_error (-1.0): |true_success - predicted| after delay
+
+    The keypoint rewards are the PRIMARY positive signals. They were
+    previously disabled due to a misunderstanding — forge DOES use them
+    via super()._get_rewards().
     """
 
-    # --- Active rewards (matching direct forge) ---
-
-    # Asset-relative action penalty (forge: action_penalty_asset, scale -0.001)
-    action_penalty_asset = RewTerm(
-        func=mdp.action_penalty_asset,
-        weight=-0.001,
-    )
-
-    # Contact force penalty (forge: contact_penalty, scale -0.2)
-    contact_penalty = RewTerm(
-        func=mdp.contact_force_penalty,
-        weight=-0.2,
-    )
-
-    # Success prediction error (forge: success_pred_error, scale -1.0 after delay)
-    success_pred_error = RewTerm(
-        func=mdp.success_prediction_penalty,
-        weight=-1.0,
-    )
-
-    # --- Proximity rewards (bootstrap learning while hole is solid) ---
-    # These provide positive dense signals since the solid hole prevents
-    # physical insertion. They replace the chicken-and-egg problem where
-    # success_pred_error never activates without initial successes.
-
-    # 3D proximity: exponential reward as peg approaches hole
-    peg_hole_proximity = RewTerm(
-        func=mdp.peg_hole_proximity,
-        weight=2.0,
-        params={"sigma": 0.005},
-    )
-
-    # XY alignment: dense signal for centering peg above hole
-    peg_hole_xy = RewTerm(
-        func=mdp.peg_hole_xy_alignment,
-        weight=1.0,
-        params={"sigma": 0.005},
-    )
-
-    # Z approach: reward for lowering peg when xy is aligned (gated)
-    peg_hole_z = RewTerm(
-        func=mdp.peg_hole_z_alignment,
-        weight=0.5,
-        params={"sigma": 0.003, "xy_gate": 0.005},
-    )
-
-    # --- Disabled rewards (not used by direct forge) ---
-
-    # Keypoint rewards: disabled (direct forge does not use Factory keypoint rewards)
+    # --- Factory keypoint rewards (PRIMARY positive signals, weight +1.0) ---
     keypoint_baseline = RewTerm(
         func=mdp.keypoint_peg_hole_error_exp,
-        weight=0.0,
+        weight=1.0,
         params={
             "kp_exp_coeffs": [(5, 4)],
             "kp_use_sum_of_exps": False,
@@ -424,7 +386,7 @@ class RewardsCfg:
     )
     keypoint_coarse = RewTerm(
         func=mdp.keypoint_peg_hole_error_exp,
-        weight=0.0,
+        weight=1.0,
         params={
             "kp_exp_coeffs": [(50, 2)],
             "kp_use_sum_of_exps": False,
@@ -433,7 +395,7 @@ class RewardsCfg:
     )
     keypoint_fine = RewTerm(
         func=mdp.keypoint_peg_hole_error_exp,
-        weight=0.0,
+        weight=1.0,
         params={
             "kp_exp_coeffs": [(100, 0)],
             "kp_use_sum_of_exps": False,
@@ -441,10 +403,32 @@ class RewardsCfg:
         },
     )
 
-    # Action penalty: disabled (direct forge: action_penalty_ee_scale = 0.0)
-    action_penalty = RewTerm(func=mdp.action_l2, weight=0.0)
+    # --- Forge-specific additions (penalties) ---
+    action_penalty_asset = RewTerm(
+        func=mdp.action_penalty_asset,
+        weight=-0.001,
+    )
+    contact_penalty = RewTerm(
+        func=mdp.contact_force_penalty,
+        weight=-0.2,
+    )
+    success_pred_error = RewTerm(
+        func=mdp.success_prediction_penalty,
+        weight=-1.0,
+    )
 
-    # Action gradient penalty: disabled (direct forge defines but never uses)
+    # --- Success bonuses (from FactoryEnv) ---
+    curr_engaged = RewTerm(
+        func=mdp.peg_insertion_engaged,
+        weight=1.0,
+    )
+    curr_success = RewTerm(
+        func=mdp.peg_insertion_success,
+        weight=1.0,
+    )
+
+    # --- Disabled rewards ---
+    action_penalty = RewTerm(func=mdp.action_l2, weight=0.0)
     action_grad_penalty = RewTerm(func=mdp.action_rate_l2, weight=0.0)
 
 
