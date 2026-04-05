@@ -194,3 +194,62 @@ class action_penalty_asset(ManagerTermBase):
         rot_threshold = action_term._rot_threshold[:, 2]  # Use yaw threshold
         yaw_error_norm = yaw_error / rot_threshold
         return pos_error_norm + yaw_error_norm
+
+
+class success_prediction_penalty(ManagerTermBase):
+    """Success prediction penalty: |true_success - predicted_success|.
+
+    Direct forge equivalent: success_pred_error reward.
+    - Reads the 7th action dimension (success prediction) and rescales from [-1,1] to [0,1]
+    - Computes true success (peg within xy<0.0025 and z below height threshold)
+    - Returns absolute difference
+    - Scales by success_pred_scale (starts 0, becomes 1.0 when 25%+ envs succeed)
+
+    The delay_until_ratio=0.25 means the penalty only activates once the policy
+    is achieving some successes, preventing premature optimization.
+    """
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.peg: RigidObject = env.scene["peg"]
+        self.hole: RigidObject = env.scene["hole"]
+        self._success_pred_scale = 0.0
+        self._delay_until_ratio = 0.25
+        # Height threshold: peg_insert uses fixed_asset_cfg.height * success_threshold
+        # For the default peg, height ~ 0.04 and threshold = 0.04 → ~0.0016m
+        # But we simplify to a fixed threshold matching direct forge behavior
+        self._xy_threshold = 0.0025
+        self._z_threshold = 0.0016  # approx height * success_threshold
+
+    def _get_true_successes(self, env: ManagerBasedRLEnv) -> torch.Tensor:
+        """Compute true success: peg centered in hole and below height threshold."""
+        peg_pos = self.peg.data.root_pos_w - env.scene.env_origins
+        hole_pos = self.hole.data.root_pos_w - env.scene.env_origins
+
+        xy_dist = torch.linalg.vector_norm(peg_pos[:, :2] - hole_pos[:, :2], dim=1)
+        z_disp = peg_pos[:, 2] - hole_pos[:, 2]
+
+        is_centered = xy_dist < self._xy_threshold
+        is_below = z_disp < self._z_threshold
+        return torch.logical_and(is_centered, is_below)
+
+    def __call__(self, env: ManagerBasedRLEnv) -> torch.Tensor:
+        # Get policy's success prediction: action dim 6, rescaled [-1,1] → [0,1]
+        actions = env.action_manager.action
+        policy_success_pred = (actions[:, 6] + 1.0) / 2.0
+
+        # Get true success
+        true_successes = self._get_true_successes(env)
+
+        # Delay activation until 25% of envs are succeeding
+        if true_successes.float().mean() >= self._delay_until_ratio:
+            self._success_pred_scale = 1.0
+
+        success_pred_error = (true_successes.float() - policy_success_pred).abs()
+
+        # Store for logging
+        env._success_pred_error = success_pred_error
+        env._true_success_rate = true_successes.float().mean()
+        env._success_pred_scale = self._success_pred_scale
+
+        return success_pred_error * self._success_pred_scale
