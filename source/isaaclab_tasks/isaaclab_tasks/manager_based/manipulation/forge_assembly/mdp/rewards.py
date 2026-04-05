@@ -196,17 +196,107 @@ class action_penalty_asset(ManagerTermBase):
         return pos_error_norm + yaw_error_norm
 
 
+class peg_hole_proximity(ManagerTermBase):
+    """Positive reward for peg approaching hole (proximity-based).
+
+    Since the hole is currently a solid cylinder (no hollow USD mesh available),
+    physical insertion is impossible. This reward provides a dense positive signal
+    for the peg getting close to the hole center, measured by 3D distance.
+
+    Uses exponential shaping: r = exp(-distance / sigma) so reward increases
+    smoothly as the peg approaches. This bootstraps learning before success_pred
+    can activate (which requires 25% success rate first).
+
+    This replaces the need for keypoint rewards or success-based rewards when
+    the hole geometry prevents physical insertion.
+    """
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.peg: RigidObject = env.scene["peg"]
+        self.hole: RigidObject = env.scene["hole"]
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        sigma: float = 0.005,
+    ) -> torch.Tensor:
+        peg_pos = self.peg.data.root_pos_w - env.scene.env_origins
+        hole_pos = self.hole.data.root_pos_w - env.scene.env_origins
+
+        dist = torch.linalg.vector_norm(peg_pos[:, :3] - hole_pos[:, :3], dim=1)
+        reward = torch.exp(-dist / sigma)
+
+        # Store for logging
+        env._peg_hole_dist = dist
+        return reward
+
+
+class peg_hole_xy_alignment(ManagerTermBase):
+    """Positive reward for xy alignment between peg and hole.
+
+    Rewards the policy for centering the peg above the hole, independent of z.
+    This is a key sub-skill for insertion that provides a denser signal than
+    full 3D proximity alone.
+    """
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.peg: RigidObject = env.scene["peg"]
+        self.hole: RigidObject = env.scene["hole"]
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        sigma: float = 0.005,
+    ) -> torch.Tensor:
+        peg_pos = self.peg.data.root_pos_w - env.scene.env_origins
+        hole_pos = self.hole.data.root_pos_w - env.scene.env_origins
+
+        xy_dist = torch.linalg.vector_norm(peg_pos[:, :2] - hole_pos[:, :2], dim=1)
+        return torch.exp(-xy_dist / sigma)
+
+
+class peg_hole_z_alignment(ManagerTermBase):
+    """Positive reward for z descent of peg towards hole.
+
+    Rewards the policy for lowering the peg towards the hole center height.
+    Only activates when xy alignment is already good (within 5mm).
+    """
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.peg: RigidObject = env.scene["peg"]
+        self.hole: RigidObject = env.scene["hole"]
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        sigma: float = 0.003,
+        xy_gate: float = 0.005,
+    ) -> torch.Tensor:
+        peg_pos = self.peg.data.root_pos_w - env.scene.env_origins
+        hole_pos = self.hole.data.root_pos_w - env.scene.env_origins
+
+        xy_dist = torch.linalg.vector_norm(peg_pos[:, :2] - hole_pos[:, :2], dim=1)
+        z_dist = torch.abs(peg_pos[:, 2] - hole_pos[:, 2])
+
+        # Only reward z approach when xy is already aligned
+        gate = (xy_dist < xy_gate).float()
+        return torch.exp(-z_dist / sigma) * gate
+
+
 class success_prediction_penalty(ManagerTermBase):
     """Success prediction penalty: |true_success - predicted_success|.
 
     Direct forge equivalent: success_pred_error reward.
+    Uses proximity-based success (peg within 3D distance threshold) since
+    the hole is solid and physical insertion is not possible.
+
     - Reads the 7th action dimension (success prediction) and rescales from [-1,1] to [0,1]
-    - Computes true success (peg within xy<0.0025 and z below height threshold)
+    - Computes true success (peg within 3D proximity threshold)
     - Returns absolute difference
     - Scales by success_pred_scale (starts 0, becomes 1.0 when 25%+ envs succeed)
-
-    The delay_until_ratio=0.25 means the penalty only activates once the policy
-    is achieving some successes, preventing premature optimization.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
@@ -215,23 +305,21 @@ class success_prediction_penalty(ManagerTermBase):
         self.hole: RigidObject = env.scene["hole"]
         self._success_pred_scale = 0.0
         self._delay_until_ratio = 0.25
-        # Height threshold: peg_insert uses fixed_asset_cfg.height * success_threshold
-        # For the default peg, height ~ 0.04 and threshold = 0.04 → ~0.0016m
-        # But we simplify to a fixed threshold matching direct forge behavior
-        self._xy_threshold = 0.0025
-        self._z_threshold = 0.0016  # approx height * success_threshold
+        # Proximity-based success thresholds
+        self._xy_threshold = 0.003  # 3mm xy alignment
+        self._z_threshold = 0.003   # 3mm z proximity (not penetration)
 
     def _get_true_successes(self, env: ManagerBasedRLEnv) -> torch.Tensor:
-        """Compute true success: peg centered in hole and below height threshold."""
+        """Compute true success: peg close to hole in all axes."""
         peg_pos = self.peg.data.root_pos_w - env.scene.env_origins
         hole_pos = self.hole.data.root_pos_w - env.scene.env_origins
 
         xy_dist = torch.linalg.vector_norm(peg_pos[:, :2] - hole_pos[:, :2], dim=1)
-        z_disp = peg_pos[:, 2] - hole_pos[:, 2]
+        z_dist = torch.abs(peg_pos[:, 2] - hole_pos[:, 2])
 
         is_centered = xy_dist < self._xy_threshold
-        is_below = z_disp < self._z_threshold
-        return torch.logical_and(is_centered, is_below)
+        is_close_z = z_dist < self._z_threshold
+        return torch.logical_and(is_centered, is_close_z)
 
     def __call__(self, env: ManagerBasedRLEnv) -> torch.Tensor:
         # Get policy's success prediction: action dim 6, rescaled [-1,1] → [0,1]

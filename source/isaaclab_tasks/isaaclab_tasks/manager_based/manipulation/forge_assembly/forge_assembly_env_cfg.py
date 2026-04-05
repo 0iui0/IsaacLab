@@ -55,7 +55,11 @@ class ForgeAssemblySceneCfg(InteractiveSceneCfg):
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, -1.05)),
     )
 
-    # Hole: kinematic rigid body (cylinder with hole)
+    # Hole: kinematic rigid body (solid cylinder, represents target position)
+    # Position set to match peg center z so proximity rewards are maximized on reset.
+    # Randomization adds ±5mm xy, ±2mm z offsets each episode.
+    # NOTE: This is a solid cylinder — physical insertion is not possible.
+    # Success is measured by 3D proximity, not penetration.
     hole = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Hole",
         spawn=sim_utils.CylinderCfg(
@@ -70,10 +74,11 @@ class ForgeAssemblySceneCfg(InteractiveSceneCfg):
             mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.4, 0.4, 0.8)),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 1.05)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.425, 0.0, 0.423)),
     )
 
     # Peg: dynamic rigid body attached to EE (small cylinder)
+    # Default position matching peg center at Franka default EE + offset [0,0,0.05]
     peg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Peg",
         spawn=sim_utils.CylinderCfg(
@@ -89,7 +94,7 @@ class ForgeAssemblySceneCfg(InteractiveSceneCfg):
             mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.4, 0.2)),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 1.2)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.425, 0.0, 0.423)),
     )
 
     # Robot: filled by subclass
@@ -234,12 +239,17 @@ class EventCfg:
     )
 
     # Randomize hole pose
+    # Direct forge: hand_init_pos_noise = [0.02, 0.02, 0.01] (relative EE-to-hole noise)
+    # This replaces fixed_asset_init_pos_noise=[0.05,0.05,0.05] because we don't do IK
     randomize_hole = EventTerm(
         func=mdp.randomize_hole_pose,
         mode="reset",
         params={
-            "pos_range": {"x": [-0.05, 0.05], "y": [-0.05, 0.05], "z": [0.0, 0.0]},
-            "yaw_range": [-3.14, 3.14],
+            # Reduced from ±20mm to ±5mm xy, ±2mm z — the success threshold
+            # is 2.5mm xy so randomization must be smaller for any chance of success.
+            # Direct forge uses IK-based init with hand_init_pos_noise=[0.005, 0.005, 0.002].
+            "pos_range": {"x": [-0.005, 0.005], "y": [-0.005, 0.005], "z": [-0.002, 0.002]},
+            "yaw_range": [-3.14159, 3.14159],
         },
     )
 
@@ -372,6 +382,32 @@ class RewardsCfg:
     success_pred_error = RewTerm(
         func=mdp.success_prediction_penalty,
         weight=-1.0,
+    )
+
+    # --- Proximity rewards (bootstrap learning while hole is solid) ---
+    # These provide positive dense signals since the solid hole prevents
+    # physical insertion. They replace the chicken-and-egg problem where
+    # success_pred_error never activates without initial successes.
+
+    # 3D proximity: exponential reward as peg approaches hole
+    peg_hole_proximity = RewTerm(
+        func=mdp.peg_hole_proximity,
+        weight=2.0,
+        params={"sigma": 0.005},
+    )
+
+    # XY alignment: dense signal for centering peg above hole
+    peg_hole_xy = RewTerm(
+        func=mdp.peg_hole_xy_alignment,
+        weight=1.0,
+        params={"sigma": 0.005},
+    )
+
+    # Z approach: reward for lowering peg when xy is aligned (gated)
+    peg_hole_z = RewTerm(
+        func=mdp.peg_hole_z_alignment,
+        weight=0.5,
+        params={"sigma": 0.003, "xy_gate": 0.005},
     )
 
     # --- Disabled rewards (not used by direct forge) ---
