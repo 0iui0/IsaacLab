@@ -208,21 +208,21 @@ class ft_force_smooth_noisy(ManagerTermBase):
         Direct forge equivalent: change_FT_frame (Modern Robotics eq. 3.95).
         Transforms wrench from EE body frame to hole (fixed asset) frame.
         """
-        from isaaclab.utils.math import quat_conjugate, quat_mul, quat_rotate
+        from isaaclab.utils.math import quat_apply, quat_conjugate, quat_mul
 
         # Compute relative transform: target_T_source
         source_quat_inv = quat_conjugate(source_quat)
         rel_pos = source_pos - target_pos
         # Rotate relative position to target frame
-        rel_pos_target = quat_rotate(target_quat, rel_pos)
+        rel_pos_target = quat_apply(target_quat, rel_pos)
 
         # Rotate force to target frame: F_target = R_target * R_source^T * F_source
-        source_F_world = quat_rotate(source_quat, source_F)  # source to world
-        target_F = quat_rotate(quat_conjugate(target_quat), source_F_world)  # world to target
+        source_F_world = quat_apply(source_quat, source_F)  # source to world
+        target_F = quat_apply(quat_conjugate(target_quat), source_F_world)  # world to target
 
         # Transform torque: T_target = R * T_source + r × F_target
-        source_T_world = quat_rotate(source_quat, source_T)
-        target_T = quat_rotate(quat_conjugate(target_quat), source_T_world) + torch.cross(rel_pos_target, target_F, dim=-1)
+        source_T_world = quat_apply(source_quat, source_T)
+        target_T = quat_apply(quat_conjugate(target_quat), source_T_world) + torch.cross(rel_pos_target, target_F, dim=-1)
         return target_F, target_T
 
     def __call__(

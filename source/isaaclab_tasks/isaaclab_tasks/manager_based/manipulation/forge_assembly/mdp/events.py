@@ -54,13 +54,13 @@ class reset_peg_to_ee(ManagerTermBase):
         if peg_offset is None:
             peg_offset = self._peg_offset
 
-        from isaaclab.utils.math import quat_rotate
+        from isaaclab.utils.math import quat_apply
 
         ee_pos = self.robot.data.body_pos_w[env_ids, self._ee_body_idx].clone()
         ee_quat = self.robot.data.body_quat_w[env_ids, self._ee_body_idx].clone()
 
         offset = torch.tensor(peg_offset, device=env.device, dtype=torch.float32).unsqueeze(0).expand(len(env_ids), -1)
-        offset_world = quat_rotate(ee_quat, offset)
+        offset_world = quat_apply(ee_quat, offset)
 
         pos = ee_pos + offset_world
         quat = ee_quat
@@ -74,15 +74,19 @@ class reset_peg_to_ee(ManagerTermBase):
 
 
 class randomize_hole_pose(ManagerTermBase):
-    """Randomize hole position and orientation on reset."""
+    """Randomize hole position and orientation on reset.
+
+    Places hole near the default EE position with small noise,
+    matching direct forge's hand_init_pos_noise [0.02, 0.02, 0.01].
+    """
 
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self.hole: RigidObject = env.scene["hole"]
         self._pos_range = cfg.params.get(
-            "pos_range", {"x": [-0.05, 0.05], "y": [-0.05, 0.05], "z": [0.0, 0.0]}
+            "pos_range", {"x": [-0.02, 0.02], "y": [-0.02, 0.02], "z": [-0.01, 0.01]}
         )
-        self._yaw_range = cfg.params.get("yaw_range", [-3.14, 3.14])
+        self._yaw_range = cfg.params.get("yaw_range", [-3.14159, 3.14159])
 
     def __call__(
         self,
@@ -114,6 +118,11 @@ class randomize_hole_pose(ManagerTermBase):
             yaw,
         )
         root_state[:, 3:7] = torch_utils.quat_mul(yaw_quat, default_quat)
+
+        # write_root_state_to_sim expects world-frame positions,
+        # but default_root_state is local (no env_origins).
+        # Add env_origins so the hole lands in the correct environment.
+        root_state[:, :3] += env.scene.env_origins[env_ids]
 
         self.hole.write_root_state_to_sim(root_state, env_ids)
 
