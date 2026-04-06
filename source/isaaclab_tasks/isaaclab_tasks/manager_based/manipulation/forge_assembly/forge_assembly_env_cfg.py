@@ -29,9 +29,13 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim.simulation_cfg import PhysxCfg, SimulationCfg
 from isaaclab.utils import configclass
+from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.manipulation.forge_assembly.mdp as mdp
+
+# Factory asset directory on Nucleus (same as direct forge)
+_FACTORY_ASSET_DIR = f"{ISAACLAB_NUCLEUS_DIR}/Factory"
 
 # Import custom action term config
 from isaaclab_tasks.manager_based.manipulation.forge_assembly.mdp.actions.actions_cfg import (
@@ -56,44 +60,46 @@ class ForgeAssemblySceneCfg(InteractiveSceneCfg):
     )
 
     # Hole: kinematic rigid body representing target position.
-    # Matches direct forge's factory_hole_8mm.usd: diameter=8.1mm, height=25mm, mass=0.05kg
-    # Direct forge uses Articulation with 0 joints + 192 solver iterations.
-    # Here we use RigidObject with matching physics params.
+    # Uses Factory USD (factory_hole_8mm.usd) — a proper hollow cylinder mesh
+    # that allows the peg to physically insert. Direct forge uses the same USD
+    # via Articulation with 0 joints + 192 solver iterations.
     hole = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Hole",
-        spawn=sim_utils.CylinderCfg(
-            radius=0.00405,  # 8.1mm diameter / 2 (matches factory_hole_8mm)
-            height=0.025,    # 25mm height (matches factory_hole_8mm)
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=f"{_FACTORY_ASSET_DIR}/factory_hole_8mm.usd",
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 kinematic_enabled=True,
-                solver_position_iteration_count=192,  # match direct forge
+                solver_position_iteration_count=192,
                 max_depenetration_velocity=5.0,
+                linear_damping=0.0,
+                angular_damping=0.0,
+                max_contact_impulse=1e32,
             ),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.4, 0.4, 0.8)),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.425, 0.0, 0.423)),
     )
 
     # Peg: dynamic rigid body held by gripper.
-    # Matches direct forge's factory_peg_8mm.usd: diameter=7.986mm, height=50mm, mass=0.019kg
+    # Uses Factory USD (factory_peg_8mm.usd) matching direct forge exactly.
     # Direct forge uses Articulation with 0 joints, disable_gravity=True, 192 solver iterations.
     peg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Peg",
-        spawn=sim_utils.CylinderCfg(
-            radius=0.003993,  # 7.986mm diameter / 2 (matches factory_peg_8mm)
-            height=0.05,      # 50mm height (matches factory_peg_8mm)
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=f"{_FACTORY_ASSET_DIR}/factory_peg_8mm.usd",
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 kinematic_enabled=False,
+                solver_position_iteration_count=192,
                 max_depenetration_velocity=5.0,
-                solver_position_iteration_count=192,  # match direct forge
+                linear_damping=0.0,
+                angular_damping=0.0,
+                max_contact_impulse=1e32,
             ),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.019),  # match direct forge
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.4, 0.2)),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.019),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.425, 0.0, 0.423)),
     )
