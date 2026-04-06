@@ -184,11 +184,16 @@ class ee_angvel_fd(ManagerTermBase):
 
 
 class ft_force_smooth_noisy(ManagerTermBase):
-    """Force sensor reading: EMA-smoothed with Gaussian noise, frame-transformed.
+    """Force sensor reading: EMA-smoothed with Gaussian noise, frame-transformed to hole frame.
 
-    Direct forge equivalent: ft_force observation. Reads 6D wrench from EE body,
-    applies EMA smoothing, transforms to hole frame via change_FT_frame, adds noise.
-    Returns 3D force vector (force component only).
+    Direct forge equivalent: ft_force observation.
+
+    Direct forge reads force in WORLD frame via get_link_incoming_joint_force(),
+    then transforms from world frame to hole frame using change_FT_frame with
+    source_frame=(identity, zeros) and target_frame=(identity, hole_pos).
+
+    Since both frames use identity quaternion, the force vector is unchanged.
+    This is equivalent to using the world-frame force directly.
     """
 
     def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRLEnv):
@@ -202,29 +207,6 @@ class ft_force_smooth_noisy(ManagerTermBase):
         self._noise_std = cfg.params.get("noise_std", 1.0)
         self._force_smooth = torch.zeros(env.num_envs, 6, device=env.device)
 
-    def _change_FT_frame(self, source_F, source_T, source_pos, source_quat, target_pos, target_quat):
-        """Transform force/torque from source frame to target frame.
-
-        Direct forge equivalent: change_FT_frame (Modern Robotics eq. 3.95).
-        Transforms wrench from EE body frame to hole (fixed asset) frame.
-        """
-        from isaaclab.utils.math import quat_apply, quat_conjugate, quat_mul
-
-        # Compute relative transform: target_T_source
-        source_quat_inv = quat_conjugate(source_quat)
-        rel_pos = source_pos - target_pos
-        # Rotate relative position to target frame
-        rel_pos_target = quat_apply(target_quat, rel_pos)
-
-        # Rotate force to target frame: F_target = R_target * R_source^T * F_source
-        source_F_world = quat_apply(source_quat, source_F)  # source to world
-        target_F = quat_apply(quat_conjugate(target_quat), source_F_world)  # world to target
-
-        # Transform torque: T_target = R * T_source + r × F_target
-        source_T_world = quat_apply(source_quat, source_T)
-        target_T = quat_apply(quat_conjugate(target_quat), source_T_world) + torch.cross(rel_pos_target, target_F, dim=-1)
-        return target_F, target_T
-
     def __call__(
         self,
         env: ManagerBasedRLEnv,
@@ -232,26 +214,30 @@ class ft_force_smooth_noisy(ManagerTermBase):
         smoothing_alpha: float = 0.25,
         noise_std: float = 1.0,
     ) -> torch.Tensor:
-        # Read raw wrench from PhysX (6D: force + torque) in body frame
-        raw_wrench = self.robot.data.body_incoming_joint_wrench_b[:, self._ee_body_idx]
+        from isaaclab.utils.math import quat_apply, quat_conjugate
+
+        # Read raw wrench from PhysX in BODY frame
+        raw_wrench_b = self.robot.data.body_incoming_joint_wrench_b[:, self._ee_body_idx]
+
+        # Rotate force from body frame to WORLD frame
+        # Direct forge: get_link_incoming_joint_force() returns world-frame force
+        ee_quat = self.robot.data.body_quat_w[:, self._ee_body_idx]
+        raw_force_world = quat_apply(ee_quat, raw_wrench_b[:, :3])
+        raw_torque_world = quat_apply(ee_quat, raw_wrench_b[:, 3:6])
+        raw_wrench_world = torch.cat([raw_force_world, raw_torque_world], dim=-1)
 
         # EMA smoothing (direct forge: alpha * raw + (1-alpha) * prev)
-        self._force_smooth = smoothing_alpha * raw_wrench + (1 - smoothing_alpha) * self._force_smooth
+        self._force_smooth = smoothing_alpha * raw_wrench_world + (1 - smoothing_alpha) * self._force_smooth
 
-        # Transform force from EE body frame to hole frame (direct forge: change_FT_frame)
-        ee_pos = self.robot.data.body_pos_w[:, self._ee_body_idx]
-        ee_quat = self.robot.data.body_quat_w[:, self._ee_body_idx]
-        hole_pos = self.hole.data.root_pos_w
-        hole_quat = self.hole.data.root_quat_w
-
-        source_F = self._force_smooth[:, :3]
-        source_T = self._force_smooth[:, 3:6]
-        target_F, _ = self._change_FT_frame(source_F, source_T, ee_pos, ee_quat, hole_pos, hole_quat)
+        # Transform force from WORLD frame to HOLE frame
+        # Direct forge uses identity quaternion for hole frame (no rotation)
+        # So we just use the world-frame force directly
+        target_F = self._force_smooth[:, :3]
 
         # Store force norm on env for contact_force_penalty reward term
         env._force_smooth_norm = torch.norm(target_F, p=2, dim=-1)
 
-        # Add noise
+        # Add noise (Direct forge: noise ~ N(0,1) * ft_force=1.0)
         noise = torch.randn_like(target_F) * noise_std
         return target_F + noise
 

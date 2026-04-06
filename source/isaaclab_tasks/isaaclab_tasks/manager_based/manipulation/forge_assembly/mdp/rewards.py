@@ -29,11 +29,15 @@ if TYPE_CHECKING:
 ##
 
 
-def _get_keypoint_offsets(device: torch.device | None = None) -> torch.Tensor:
-    """Get keypoint offsets for pose alignment (6-axis: +/-x, +/-y, +/-z)."""
-    corners = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-    corners = torch.tensor(corners, device=device, dtype=torch.float32)
-    return torch.cat((corners, -corners), dim=0)  # (6, 3)
+def _get_keypoint_offsets(num_keypoints: int = 4, device: torch.device | None = None) -> torch.Tensor:
+    """Get uniformly-spaced keypoints along a line of unit length, centered at 0.
+
+    Matches direct forge's factory_utils.get_keypoint_offsets exactly.
+    For num_keypoints=4: offsets along Z-axis at [-0.5, -0.1667, 0.1667, 0.5].
+    """
+    keypoint_offsets = torch.zeros((num_keypoints, 3), device=device, dtype=torch.float32)
+    keypoint_offsets[:, -1] = torch.linspace(0.0, 1.0, num_keypoints, device=device) - 0.5
+    return keypoint_offsets
 
 
 def _compute_keypoint_distance(
@@ -50,25 +54,26 @@ def _compute_keypoint_distance(
         Tensor of shape (num_envs, num_keypoints) with L2 distances.
     """
     num_envs = pos1.shape[0]
-    offsets = _get_keypoint_offsets(pos1.device) * keypoint_scale  # (6, 3)
+    num_kp = 4  # Match direct forge: 4 keypoints along Z-axis
+    offsets = _get_keypoint_offsets(num_kp, pos1.device) * keypoint_scale  # (4, 3)
 
     # Expand for all keypoints
     offsets_exp = offsets.unsqueeze(0).expand(num_envs, -1, -1).reshape(-1, 3)
     identity_exp = identity_quat[: offsets_exp.shape[0]]
 
     # Transform keypoints by each pose
-    quat1_exp = quat1.unsqueeze(1).expand(-1, 6, -1).reshape(-1, 4)
-    pos1_exp = pos1.unsqueeze(1).expand(-1, 6, -1).reshape(-1, 3)
-    quat2_exp = quat2.unsqueeze(1).expand(-1, 6, -1).reshape(-1, 4)
-    pos2_exp = pos2.unsqueeze(1).expand(-1, 6, -1).reshape(-1, 3)
+    quat1_exp = quat1.unsqueeze(1).expand(-1, num_kp, -1).reshape(-1, 4)
+    pos1_exp = pos1.unsqueeze(1).expand(-1, num_kp, -1).reshape(-1, 3)
+    quat2_exp = quat2.unsqueeze(1).expand(-1, num_kp, -1).reshape(-1, 4)
+    pos2_exp = pos2.unsqueeze(1).expand(-1, num_kp, -1).reshape(-1, 3)
 
     kp1, _ = combine_frame_transforms(pos1_exp, quat1_exp, offsets_exp, identity_exp)
     kp2, _ = combine_frame_transforms(pos2_exp, quat2_exp, offsets_exp, identity_exp)
 
-    kp1 = kp1.reshape(num_envs, 6, 3)
-    kp2 = kp2.reshape(num_envs, 6, 3)
+    kp1 = kp1.reshape(num_envs, num_kp, 3)
+    kp2 = kp2.reshape(num_envs, num_kp, 3)
 
-    return torch.norm(kp2 - kp1, p=2, dim=-1)  # (num_envs, 6)
+    return torch.norm(kp2 - kp1, p=2, dim=-1)  # (num_envs, num_kp)
 
 
 ##
@@ -90,7 +95,7 @@ class keypoint_peg_hole_error(ManagerTermBase):
         self.hole: Articulation = env.scene["hole"]
         self._identity_quat = (
             torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=env.device, dtype=torch.float32)
-            .repeat(env.num_envs * 6, 1)
+            .repeat(env.num_envs * 4, 1)
             .contiguous()
         )
 
@@ -125,7 +130,7 @@ class keypoint_peg_hole_error_exp(ManagerTermBase):
         self.hole: Articulation = env.scene["hole"]
         self._identity_quat = (
             torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=env.device, dtype=torch.float32)
-            .repeat(env.num_envs * 6, 1)
+            .repeat(env.num_envs * 4, 1)
             .contiguous()
         )
 
