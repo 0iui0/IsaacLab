@@ -370,20 +370,31 @@ class ForgeAssemblyAction(ActionTerm):
             self._contact_penalty_threshold[env_ids] = self._env._contact_penalty_threshold[env_ids].squeeze(-1)
 
     def _get_ee_jacobian(self) -> torch.Tensor:
-        """Get Jacobian for end-effector body, selecting arm joint columns."""
+        """Get Jacobian averaged from left/right finger bodies (matching direct forge).
+
+        Direct forge computes:
+          self.left_finger_jacobian = jacobians[:, self.left_finger_body_idx - 1, 0:6, 0:7]
+          self.right_finger_jacobian = jacobians[:, self.right_finger_body_idx - 1, 0:6, 0:7]
+          self.fingertip_midpoint_jacobian = (left + right) * 0.5
+        """
         # jacobians shape: (num_envs, num_bodies, 6, num_dofs)
-        # Isaac Sim 5.1+: use root_physx_view.get_jacobians() instead of data.jacobians
         jacobians = self._robot.root_physx_view.get_jacobians()
-        # body_idx now directly indexes into jacobians without -1 offset
-        jacobian = jacobians[:, self._body_idx]
-        # Direct forge uses hardcoded [:, 0:6, 0:7] for 7-DOF arm
-        # Use index_select for robustness if joint_ids are non-contiguous
-        if len(self._joint_ids) == 7 and self._joint_ids[0] == 0 and self._joint_ids[-1] == 6:
-            # Optimized: direct slice for contiguous [0, 1, 2, 3, 4, 5, 6]
-            return jacobian[:, :, 0:7]
-        else:
-            # Fallback: index_select for non-contiguous joint_ids
-            return jacobian.index_select(2, torch.tensor(self._joint_ids, device=self.device))
+
+        # Try to get finger body indices for averaged Jacobian (direct forge pattern)
+        try:
+            left_finger_idx = self._robot.body_names.index("panda_leftfinger")
+            right_finger_idx = self._robot.body_names.index("panda_rightfinger")
+
+            # Extract finger Jacobians (note: direct forge uses idx - 1)
+            left_jacobian = jacobians[:, left_finger_idx - 1, :, 0:7]
+            right_jacobian = jacobians[:, right_finger_idx - 1, :, 0:7]
+
+            # Average left and right finger Jacobians (direct forge pattern)
+            return (left_jacobian + right_jacobian) * 0.5
+        except ValueError:
+            # Fallback: use configured body name if finger names not found
+            jacobian = jacobians[:, self._body_idx, :, 0:7]
+            return jacobian
 
     def _get_mass_matrix_subset(self) -> torch.Tensor:
         """Get mass matrix for arm joints only from PhysX.
