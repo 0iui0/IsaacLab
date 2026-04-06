@@ -386,20 +386,25 @@ class ForgeAssemblyAction(ActionTerm):
             return jacobian.index_select(2, torch.tensor(self._joint_ids, device=self.device))
 
     def _get_mass_matrix_subset(self) -> torch.Tensor:
-        """Get approximate mass matrix for arm joints only.
+        """Get mass matrix for arm joints only from PhysX.
 
-        Isaac Sim 5.1+ does not expose full mass matrix directly.
-        We use a diagonal approximation based on joint effort limits.
+        Matches direct forge's arm_mass_matrix = root_physx_view.get_generalized_mass_matrices()[:, 0:7, 0:7].
         """
-        # Use diagonal matrix with non-zero values for invertibility
-        batch_size = self._robot.num_instances
-        device = self.device
-        num_joints = len(self._joint_ids)
+        # Get full generalized mass matrix from PhysX
+        # Shape: (num_envs, num_dofs, num_dofs)
+        mass_matrices = self._robot.root_physx_view.get_generalized_mass_matrices()
 
-        # Create diagonal mass matrix (simplified approximation)
-        # Values tuned to match direct forge behavior and ensure invertibility
-        mass_diag = torch.eye(num_joints, device=device).unsqueeze(0).expand(batch_size, -1, -1) * 0.5
-        return mass_diag
+        # Extract arm joint submatrix (first 7 joints for Panda)
+        # Direct forge uses [:, 0:7, 0:7] for 7-DOF arm
+        if len(self._joint_ids) == 7 and self._joint_ids[0] == 0 and self._joint_ids[-1] == 6:
+            # Direct slice for contiguous [0, 1, 2, 3, 4, 5, 6]
+            return mass_matrices[:, 0:7, 0:7]
+        else:
+            # Fallback: index_select for non-contiguous joint_ids
+            joint_indices = torch.tensor(self._joint_ids, device=self.device)
+            batch_size = mass_matrices.shape[0]
+            mass_subset = mass_matrices[:, joint_indices, :][:, :, joint_indices]
+            return mass_subset
 
     def _get_hole_pos(self) -> torch.Tensor:
         """Get hole position from scene."""
