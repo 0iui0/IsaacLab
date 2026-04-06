@@ -121,11 +121,11 @@ class FrankaForgeAssemblyEnvCfg(ForgeAssemblyEnvCfg):
             body_name="panda_hand",
             hole_name="hole",
             peg_name="peg",
-            pos_action_bounds=[0.02, 0.02, 0.02],
-            rot_action_bounds=[0.097, 0.097, 0.097],
+            pos_action_bounds=[0.05, 0.05, 0.05],  # Match direct forge exactly
+            rot_action_bounds=[1.0, 1.0, 1.0],  # Match direct forge exactly
             default_task_prop_gains=[565.0, 565.0, 565.0, 28.0, 28.0, 28.0],
             default_dead_zone=[5.0, 5.0, 5.0, 1.0, 1.0, 1.0],
-            pos_action_threshold=[0.05, 0.05, 0.05],
+            pos_action_threshold=[0.02, 0.02, 0.02],  # Match direct forge exactly
             rot_action_threshold=[0.097, 0.097, 0.097],
             ema_factor_range=[0.025, 0.1],
             task_prop_gains_noise_level=0.41,
@@ -153,6 +153,9 @@ class FrankaForgeAssemblyEnvCfg(ForgeAssemblyEnvCfg):
 
         # --- Episode length ---
         self.episode_length_s = 10.0
+
+        # --- num_envs matching rl_games num_actors: 128 ---
+        self.scene.num_envs = 128
 
 
 @configclass

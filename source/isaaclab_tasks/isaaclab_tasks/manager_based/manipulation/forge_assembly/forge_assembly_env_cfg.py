@@ -483,7 +483,7 @@ class ForgeAssemblyEnvCfg(ManagerBasedRLEnvCfg):
     """Base configuration for peg-in-hole assembly using forge strategy."""
 
     # Scene
-    scene: ForgeAssemblySceneCfg = ForgeAssemblySceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: ForgeAssemblySceneCfg = ForgeAssemblySceneCfg(num_envs=128, env_spacing=2.5)
     # MDP
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
