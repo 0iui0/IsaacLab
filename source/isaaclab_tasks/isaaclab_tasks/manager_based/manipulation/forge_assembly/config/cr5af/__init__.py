@@ -16,7 +16,7 @@ from . import agents
 # CR5AF peg-in-hole assembly (training)
 gym.register(
     id="Isaac-ForgeAssembly-CR5AF-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    entry_point=f"{__name__}....forge_assembly_env:ForgeAssemblyEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.cr5af_forge_assembly_env_cfg:CR5AFForgeAssemblyEnvCfg",
@@ -27,7 +27,7 @@ gym.register(
 # CR5AF peg-in-hole assembly (play/inference)
 gym.register(
     id="Isaac-ForgeAssembly-CR5AF-Play-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    entry_point=f"{__name__}....forge_assembly_env:ForgeAssemblyEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.cr5af_forge_assembly_env_cfg:CR5AFForgeAssemblyEnvCfg_PLAY",
