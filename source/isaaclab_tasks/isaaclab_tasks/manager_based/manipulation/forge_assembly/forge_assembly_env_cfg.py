@@ -254,11 +254,12 @@ class EventCfg:
     # Reset
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    # Peg attaches to EE on reset
+    # Peg attaches to EE on reset with asset-in-gripper randomization
+    # Direct forge: held_asset_pos_noise randomizes peg position relative to EE before gripping
     reset_peg = EventTerm(
         func=mdp.reset_peg_to_ee,
         mode="reset",
-        params={"body_name": MISSING, "peg_offset": [0.0, 0.0, 0.05]},
+        params={"body_name": MISSING, "peg_offset": [0.0, 0.0, 0.05], "grip_noise_range": 0.02},
     )
 
     # Randomize hole pose

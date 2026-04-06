@@ -32,7 +32,12 @@ def _resolve_env_ids(env_ids, env: ManagerBasedRLEnv) -> torch.Tensor:
 
 
 class reset_peg_to_ee(ManagerTermBase):
-    """Reset peg pose to the end-effector position."""
+    """Reset peg pose to the end-effector position with asset-in-gripper randomization.
+
+    Direct forge equivalent: randomize_initial_state step (3) - asset-in-gripper location.
+    Adds noise to peg position relative to EE before gripping, matching direct forge's
+    held_asset_pos_noise randomization (default ±20mm).
+    """
 
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
@@ -42,6 +47,7 @@ class reset_peg_to_ee(ManagerTermBase):
         body_ids, _ = self.robot.find_bodies(body_name)
         self._ee_body_idx = body_ids[0]
         self._peg_offset = cfg.params.get("peg_offset", [0.0, 0.0, 0.05])
+        self._grip_noise_range = cfg.params.get("grip_noise_range", 0.02)
 
     def __call__(
         self,
@@ -49,10 +55,13 @@ class reset_peg_to_ee(ManagerTermBase):
         env_ids: torch.Tensor,
         body_name: str = "panda_hand",
         peg_offset: list[float] | None = None,
+        grip_noise_range: float | None = None,
     ):
         env_ids = _resolve_env_ids(env_ids, env)
         if peg_offset is None:
             peg_offset = self._peg_offset
+        if grip_noise_range is None:
+            grip_noise_range = self._grip_noise_range
 
         from isaaclab.utils.math import quat_apply
 
@@ -62,7 +71,12 @@ class reset_peg_to_ee(ManagerTermBase):
         offset = torch.tensor(peg_offset, device=env.device, dtype=torch.float32).unsqueeze(0).expand(len(env_ids), -1)
         offset_world = quat_apply(ee_quat, offset)
 
-        pos = ee_pos + offset_world
+        # Add asset-in-gripper randomization (direct forge: held_asset_pos_noise)
+        # Random noise in [-grip_noise_range, +grip_noise_range] for x, y, z
+        grip_noise = (torch.rand((len(env_ids), 3), device=env.device) * 2 - 1) * grip_noise_range
+        grip_noise_world = quat_apply(ee_quat, grip_noise)
+
+        pos = ee_pos + offset_world + grip_noise
         quat = ee_quat
 
         root_state = self.peg.data.default_root_state[env_ids].clone()
