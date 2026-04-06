@@ -20,7 +20,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": "isaaclab_tasks.manager_based.manipulation.forge_assembly.config.cr5af.cr5af_forge_assembly_env_cfg:CR5AFForgeAssemblyEnvCfg",
-        "rsl_rl_cfg_entry_point": "isaaclab_tasks.manager_based.manipulation.forge_assembly.config.cr5af.agents.rsl_rl_ppo_cfg:CR5AFForgeAssemblyRNNPPORunnerCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:CR5AFForgeAssemblyRNNPPORunnerCfg",
     },
 )
 

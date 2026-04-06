@@ -20,7 +20,7 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": "isaaclab_tasks.manager_based.manipulation.forge_assembly.config.marvin_m6.marvin_m6_forge_assembly_env_cfg:MarvinM6ForgeAssemblyEnvCfg",
-        "rsl_rl_cfg_entry_point": "isaaclab_tasks.manager_based.manipulation.forge_assembly.config.marvin_m6.agents.rsl_rl_ppo_cfg:MarvinM6ForgeAssemblyRNNPPORunnerCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:MarvinM6ForgeAssemblyRNNPPORunnerCfg",
     },
 )
 
