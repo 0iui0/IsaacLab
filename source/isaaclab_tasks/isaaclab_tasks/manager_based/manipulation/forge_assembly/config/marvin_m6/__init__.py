@@ -16,20 +16,20 @@ from . import agents
 # Marvin M6 peg-in-hole assembly (training)
 gym.register(
     id="Isaac-ForgeAssembly-MarvinM6-v0",
-    entry_point=f"{__name__}...forge_assembly_env:ForgeAssemblyEnv",
+    entry_point="isaaclab_tasks.manager_based.manipulation.forge_assembly.forge_assembly_env:ForgeAssemblyEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.marvin_m6_forge_assembly_env_cfg:MarvinM6ForgeAssemblyEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:MarvinM6ForgeAssemblyRNNPPORunnerCfg",
+        "env_cfg_entry_point": "isaaclab_tasks.manager_based.manipulation.forge_assembly.config.marvin_m6.marvin_m6_forge_assembly_env_cfg:MarvinM6ForgeAssemblyEnvCfg",
+        "rsl_rl_cfg_entry_point": "isaaclab_tasks.manager_based.manipulation.forge_assembly.config.marvin_m6.agents.rsl_rl_ppo_cfg:MarvinM6ForgeAssemblyRNNPPORunnerCfg",
     },
 )
 
 # Marvin M6 peg-in-hole assembly (play/inference)
 gym.register(
     id="Isaac-ForgeAssembly-MarvinM6-Play-v0",
-    entry_point=f"{__name__}...forge_assembly_env:ForgeAssemblyEnv",
+    entry_point="isaaclab_tasks.manager_based.manipulation.forge_assembly.forge_assembly_env:ForgeAssemblyEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.marvin_m6_forge_assembly_env_cfg:MarvinM6ForgeAssemblyEnvCfg_PLAY",
+        "env_cfg_entry_point": "isaaclab_tasks.manager_based.manipulation.forge_assembly.config.marvin_m6.marvin_m6_forge_assembly_env_cfg:MarvinM6ForgeAssemblyEnvCfg_PLAY",
     },
 )
