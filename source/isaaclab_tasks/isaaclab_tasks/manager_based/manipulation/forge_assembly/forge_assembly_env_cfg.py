@@ -76,6 +76,9 @@ class ForgeAssemblySceneCfg(InteractiveSceneCfg):
                 angular_damping=0.0,
                 max_contact_impulse=1e32,
             ),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                articulation_enabled=False,  # Factory USD has FixedJoint — disable for RigidObject
+            ),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
         ),
@@ -97,6 +100,9 @@ class ForgeAssemblySceneCfg(InteractiveSceneCfg):
                 linear_damping=0.0,
                 angular_damping=0.0,
                 max_contact_impulse=1e32,
+            ),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                articulation_enabled=False,  # Factory USD has FixedJoint — disable for RigidObject
             ),
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.019),
