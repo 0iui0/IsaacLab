@@ -16,7 +16,7 @@ from . import agents
 # Franka peg-in-hole assembly (training)
 gym.register(
     id="Isaac-ForgeAssembly-Franka-v0",
-    entry_point=f"{__name__}....forge_assembly_env:ForgeAssemblyEnv",
+    entry_point=f"{__name__}...forge_assembly_env:ForgeAssemblyEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_forge_assembly_env_cfg:FrankaForgeAssemblyEnvCfg",
@@ -28,7 +28,7 @@ gym.register(
 # Franka peg-in-hole assembly (play/inference)
 gym.register(
     id="Isaac-ForgeAssembly-Franka-Play-v0",
-    entry_point=f"{__name__}....forge_assembly_env:ForgeAssemblyEnv",
+    entry_point=f"{__name__}...forge_assembly_env:ForgeAssemblyEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.franka_forge_assembly_env_cfg:FrankaForgeAssemblyEnvCfg_PLAY",

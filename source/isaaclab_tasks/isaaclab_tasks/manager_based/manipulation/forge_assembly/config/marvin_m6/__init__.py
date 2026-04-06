@@ -16,7 +16,7 @@ from . import agents
 # Marvin M6 peg-in-hole assembly (training)
 gym.register(
     id="Isaac-ForgeAssembly-MarvinM6-v0",
-    entry_point=f"{__name__}....forge_assembly_env:ForgeAssemblyEnv",
+    entry_point=f"{__name__}...forge_assembly_env:ForgeAssemblyEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.marvin_m6_forge_assembly_env_cfg:MarvinM6ForgeAssemblyEnvCfg",
@@ -27,7 +27,7 @@ gym.register(
 # Marvin M6 peg-in-hole assembly (play/inference)
 gym.register(
     id="Isaac-ForgeAssembly-MarvinM6-Play-v0",
-    entry_point=f"{__name__}....forge_assembly_env:ForgeAssemblyEnv",
+    entry_point=f"{__name__}...forge_assembly_env:ForgeAssemblyEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.marvin_m6_forge_assembly_env_cfg:MarvinM6ForgeAssemblyEnvCfg_PLAY",
