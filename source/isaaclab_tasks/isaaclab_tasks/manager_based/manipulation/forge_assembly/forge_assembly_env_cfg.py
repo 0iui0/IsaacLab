@@ -55,43 +55,44 @@ class ForgeAssemblySceneCfg(InteractiveSceneCfg):
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, -1.05)),
     )
 
-    # Hole: kinematic rigid body (solid cylinder, represents target position)
-    # Position set to match peg center z so proximity rewards are maximized on reset.
-    # Randomization adds ±5mm xy, ±2mm z offsets each episode.
-    # NOTE: This is a solid cylinder — physical insertion is not possible.
-    # Success is measured by 3D proximity, not penetration.
+    # Hole: kinematic rigid body representing target position.
+    # Matches direct forge's factory_hole_8mm.usd: diameter=8.1mm, height=25mm, mass=0.05kg
+    # Direct forge uses Articulation with 0 joints + 192 solver iterations.
+    # Here we use RigidObject with matching physics params.
     hole = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Hole",
         spawn=sim_utils.CylinderCfg(
-            radius=0.03,
-            height=0.03,
+            radius=0.00405,  # 8.1mm diameter / 2 (matches factory_hole_8mm)
+            height=0.025,    # 25mm height (matches factory_hole_8mm)
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 kinematic_enabled=True,
-                solver_position_iteration_count=64,
+                solver_position_iteration_count=192,  # match direct forge
+                max_depenetration_velocity=5.0,
             ),
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0),
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.4, 0.4, 0.8)),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.425, 0.0, 0.423)),
     )
 
-    # Peg: dynamic rigid body attached to EE (small cylinder)
-    # Default position matching peg center at Franka default EE + offset [0,0,0.05]
+    # Peg: dynamic rigid body held by gripper.
+    # Matches direct forge's factory_peg_8mm.usd: diameter=7.986mm, height=50mm, mass=0.019kg
+    # Direct forge uses Articulation with 0 joints, disable_gravity=True, 192 solver iterations.
     peg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Peg",
         spawn=sim_utils.CylinderCfg(
-            radius=0.012,
-            height=0.06,
+            radius=0.003993,  # 7.986mm diameter / 2 (matches factory_peg_8mm)
+            height=0.05,      # 50mm height (matches factory_peg_8mm)
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 kinematic_enabled=False,
                 max_depenetration_velocity=5.0,
-                solver_position_iteration_count=64,
+                solver_position_iteration_count=192,  # match direct forge
             ),
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.001, rest_offset=0.0),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.019),  # match direct forge
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.4, 0.2)),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.425, 0.0, 0.423)),
@@ -360,7 +361,7 @@ class RewardsCfg:
     - kp_coarse (+1.0): squashing_fn(keypoint_dist, a=50, b=2)
     - kp_fine (+1.0): squashing_fn(keypoint_dist, a=100, b=0)
     - action_penalty_ee (0.0, disabled)
-    - action_grad_penalty (0.0, disabled in forge)
+    - action_grad_penalty (-0.1, from ForgeTask.action_grad_penalty_scale=0.1)
     - curr_engaged (+1.0): binary when insertion > 90% depth
     - curr_success (+1.0): binary when fully inserted
 
@@ -427,9 +428,11 @@ class RewardsCfg:
         weight=1.0,
     )
 
+    # --- Action gradient penalty (match direct forge ForgeTask: scale=0.1) ---
+    action_grad_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.1)
+
     # --- Disabled rewards ---
     action_penalty = RewTerm(func=mdp.action_l2, weight=0.0)
-    action_grad_penalty = RewTerm(func=mdp.action_rate_l2, weight=0.0)
 
 
 ##
