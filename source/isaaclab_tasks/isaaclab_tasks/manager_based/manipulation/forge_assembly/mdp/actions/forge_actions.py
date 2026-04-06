@@ -25,7 +25,7 @@ import numpy as np
 import isaacsim.core.utils.torch as torch_utils
 from isaaclab.utils.math import axis_angle_from_quat
 
-from isaaclab.assets import Articulation, RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.managers import ActionTerm
 
 
@@ -403,7 +403,7 @@ class ForgeAssemblyAction(ActionTerm):
 
     def _get_hole_pos(self) -> torch.Tensor:
         """Get hole position from scene."""
-        hole: RigidObject = self._env.scene["hole"]
+        hole: Articulation = self._env.scene["hole"]
         return hole.data.root_pos_w
 
     @staticmethod

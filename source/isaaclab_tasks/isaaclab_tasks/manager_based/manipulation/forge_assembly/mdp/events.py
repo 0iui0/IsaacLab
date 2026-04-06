@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from isaaclab.assets import Articulation, RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.managers import EventTermCfg, ManagerTermBase, SceneEntityCfg
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ class reset_peg_to_ee(ManagerTermBase):
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self.robot: Articulation = env.scene["robot"]
-        self.peg: RigidObject = env.scene["peg"]
+        self.peg: Articulation = env.scene["peg"]
         body_name = cfg.params.get("body_name", "panda_hand")
         body_ids, _ = self.robot.find_bodies(body_name)
         self._ee_body_idx = body_ids[0]
@@ -82,7 +82,7 @@ class randomize_hole_pose(ManagerTermBase):
 
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self.hole: RigidObject = env.scene["hole"]
+        self.hole: Articulation = env.scene["hole"]
         self._pos_range = cfg.params.get(
             "pos_range", {"x": [-0.02, 0.02], "y": [-0.02, 0.02], "z": [-0.01, 0.01]}
         )

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from isaaclab.assets import Articulation, RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
 
 if TYPE_CHECKING:
@@ -45,7 +45,7 @@ def peg_dropped(
         Boolean tensor of shape (num_envs,) indicating termination.
     """
     robot: Articulation = env.scene[robot_asset_cfg.name]
-    peg: RigidObject = env.scene[asset_cfg.name]
+    peg: Articulation = env.scene[asset_cfg.name]
 
     body_ids, _ = robot.find_bodies(body_name)
     ee_body_idx = body_ids[0]

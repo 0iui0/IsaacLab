@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from isaaclab.assets import Articulation, RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.managers import ManagerTermBase, RewardTermCfg, SceneEntityCfg
 from isaaclab.utils.math import combine_frame_transforms
 
@@ -86,8 +86,8 @@ class keypoint_peg_hole_error(ManagerTermBase):
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self.peg: RigidObject = env.scene["peg"]
-        self.hole: RigidObject = env.scene["hole"]
+        self.peg: Articulation = env.scene["peg"]
+        self.hole: Articulation = env.scene["hole"]
         self._identity_quat = (
             torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=env.device, dtype=torch.float32)
             .repeat(env.num_envs * 6, 1)
@@ -121,8 +121,8 @@ class keypoint_peg_hole_error_exp(ManagerTermBase):
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self.peg: RigidObject = env.scene["peg"]
-        self.hole: RigidObject = env.scene["hole"]
+        self.peg: Articulation = env.scene["peg"]
+        self.hole: Articulation = env.scene["hole"]
         self._identity_quat = (
             torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=env.device, dtype=torch.float32)
             .repeat(env.num_envs * 6, 1)
@@ -206,8 +206,8 @@ class peg_insertion_engaged(ManagerTermBase):
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self.peg: RigidObject = env.scene["peg"]
-        self.hole: RigidObject = env.scene["hole"]
+        self.peg: Articulation = env.scene["peg"]
+        self.hole: Articulation = env.scene["hole"]
         self._xy_threshold = 0.0025  # 2.5mm
         self._engage_threshold = 0.9  # 90% of hole height
 
@@ -233,8 +233,8 @@ class peg_insertion_success(ManagerTermBase):
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self.peg: RigidObject = env.scene["peg"]
-        self.hole: RigidObject = env.scene["hole"]
+        self.peg: Articulation = env.scene["peg"]
+        self.hole: Articulation = env.scene["hole"]
         self._xy_threshold = 0.0025  # 2.5mm
         self._success_threshold = 0.04  # 4% of hole height
 
@@ -265,8 +265,8 @@ class success_prediction_penalty(ManagerTermBase):
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self.peg: RigidObject = env.scene["peg"]
-        self.hole: RigidObject = env.scene["hole"]
+        self.peg: Articulation = env.scene["peg"]
+        self.hole: Articulation = env.scene["hole"]
         self._success_pred_scale = 0.0
         self._delay_until_ratio = 0.25
         # Proximity-based success thresholds

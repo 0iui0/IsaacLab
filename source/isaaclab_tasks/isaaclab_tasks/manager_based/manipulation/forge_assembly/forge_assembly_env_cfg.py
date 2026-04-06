@@ -17,7 +17,7 @@ Rewards: Multi-scale keypoint tracking + contact penalty + action penalties
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ActionTermCfg as ActionTerm
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -59,55 +59,65 @@ class ForgeAssemblySceneCfg(InteractiveSceneCfg):
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, -1.05)),
     )
 
-    # Hole: kinematic rigid body representing target position.
+    # Hole: kinematic articulation with 0 joints (matches direct forge pattern exactly).
     # Uses Factory USD (factory_hole_8mm.usd) — a proper hollow cylinder mesh
-    # that allows the peg to physically insert. Direct forge uses the same USD
-    # via Articulation with 0 joints + 192 solver iterations.
-    hole = RigidObjectCfg(
+    # that allows the peg to physically insert. Direct forge uses Articulation with 0 joints.
+    hole = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/Hole",
         spawn=sim_utils.UsdFileCfg(
             usd_path=f"{_FACTORY_ASSET_DIR}/factory_hole_8mm.usd",
+            activate_contact_sensors=True,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
-                kinematic_enabled=True,
                 solver_position_iteration_count=192,
+                solver_velocity_iteration_count=1,
                 max_depenetration_velocity=5.0,
                 linear_damping=0.0,
                 angular_damping=0.0,
+                max_linear_velocity=1000.0,
+                max_angular_velocity=3666.0,
+                enable_gyroscopic_forces=True,
                 max_contact_impulse=1e32,
             ),
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                articulation_enabled=False,  # Factory USD has FixedJoint — disable for RigidObject
-            ),
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.425, 0.0, 0.423)),
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.425, 0.0, 0.423),
+            joint_pos={},
+            joint_vel={},
+        ),
+        actuators={},
     )
 
-    # Peg: dynamic rigid body held by gripper.
+    # Peg: dynamic articulation with 0 joints held by gripper (matches direct forge pattern exactly).
     # Uses Factory USD (factory_peg_8mm.usd) matching direct forge exactly.
-    # Direct forge uses Articulation with 0 joints, disable_gravity=True, 192 solver iterations.
-    peg = RigidObjectCfg(
+    peg = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/Peg",
         spawn=sim_utils.UsdFileCfg(
             usd_path=f"{_FACTORY_ASSET_DIR}/factory_peg_8mm.usd",
+            activate_contact_sensors=True,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
-                kinematic_enabled=False,
                 solver_position_iteration_count=192,
+                solver_velocity_iteration_count=1,
                 max_depenetration_velocity=5.0,
                 linear_damping=0.0,
                 angular_damping=0.0,
+                max_linear_velocity=1000.0,
+                max_angular_velocity=3666.0,
+                enable_gyroscopic_forces=True,
                 max_contact_impulse=1e32,
             ),
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                articulation_enabled=False,  # Factory USD has FixedJoint — disable for RigidObject
-            ),
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.019),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.425, 0.0, 0.423)),
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.425, 0.0, 0.423),
+            joint_pos={},
+            joint_vel={},
+        ),
+        actuators={},
     )
 
     # Robot: filled by subclass

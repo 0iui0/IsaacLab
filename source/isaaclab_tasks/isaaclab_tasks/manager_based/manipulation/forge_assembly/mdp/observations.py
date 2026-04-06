@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 
-from isaaclab.assets import Articulation, RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.managers import ManagerTermBase, ObservationTermCfg, SceneEntityCfg
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ class ee_pos_rel_hole(ManagerTermBase):
     def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self.robot: Articulation = env.scene["robot"]
-        self.hole: RigidObject = env.scene["hole"]
+        self.hole: Articulation = env.scene["hole"]
         body_name = cfg.params.get("body_name", "panda_hand")
         body_ids, _ = self.robot.find_bodies(body_name)
         self._ee_body_idx = body_ids[0]
@@ -194,7 +194,7 @@ class ft_force_smooth_noisy(ManagerTermBase):
     def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self.robot: Articulation = env.scene["robot"]
-        self.hole: RigidObject = env.scene["hole"]
+        self.hole: Articulation = env.scene["hole"]
         body_name = cfg.params.get("body_name", "panda_hand")
         body_ids, _ = self.robot.find_bodies(body_name)
         self._ee_body_idx = body_ids[0]
@@ -288,8 +288,8 @@ class held_pos_rel_fixed(ManagerTermBase):
 
     def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
-        self.peg: RigidObject = env.scene["peg"]
-        self.hole: RigidObject = env.scene["hole"]
+        self.peg: Articulation = env.scene["peg"]
+        self.hole: Articulation = env.scene["hole"]
 
     def __call__(self, env: ManagerBasedRLEnv) -> torch.Tensor:
         peg_pos = self.peg.data.root_pos_w - env.scene.env_origins
