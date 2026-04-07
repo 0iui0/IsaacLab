@@ -6,5 +6,7 @@
 5.wandb api key :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
    wandb account: safezpa, project: forge
    GitHub: git@github.com:0iui0/IsaacLab.git, branch: marvin-m6
-6.我需要在github网站看到修改记录和外wandb网站看到训练记录                                                      
-.测试训练manager base forge使用rl_games_ppo_cfg.yaml  ，  frank机器人                                                                        
+6.我需要在github网站看到修改记录和wandb网站看到训练记录,类似direct forge一样的训练指标记录，不仅限于rewards                                                      
+7.测试训练manager base forge使用docker rl_games_ppo_cfg.yaml  ，  frank机器人                               8. 如果一开始manger base forge表现和direct forge 不一样， ckeck if   manger based forge phyiscally with   match with  direct forge, also check if env, obs,   
+network policy, action , rewards, init, reset are 
+diff,findwhythetainingresultdiff                                        
