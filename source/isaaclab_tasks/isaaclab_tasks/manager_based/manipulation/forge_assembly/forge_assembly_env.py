@@ -78,6 +78,22 @@ class ForgeAssemblyEnv(ManagerBasedRLEnv):
         # Call parent reset to run all event terms (including reset_peg_to_ee)
         super()._reset_idx(env_ids)
 
+        # Zero force sensor smoothing buffer to prevent contact penalty at reset.
+        # Direct forge explicitly zeroes force_sensor_world_smooth in _reset_idx (line 331).
+        # This is critical because collisions during peg attachment can cause large
+        # initial force readings that would dominate rewards early in the episode.
+        if hasattr(self, "_force_smooth_norm"):
+            self._force_smooth_norm[env_ids] = 0.0
+        # Also zero the underlying smoothing buffer in the observation term
+        # Try policy group first (nested), then flat observation manager
+        obs_term = None
+        if hasattr(self.observation_manager, "policy") and hasattr(self.observation_manager.policy, "ft_force"):
+            obs_term = self.observation_manager.policy.ft_force
+        elif hasattr(self.observation_manager, "_terms") and "ft_force" in self.observation_manager._terms:
+            obs_term = self.observation_manager._terms["ft_force"]
+        if obs_term is not None and hasattr(obs_term, "_force_smooth"):
+            obs_term._force_smooth[env_ids] = 0.0
+
     def _position_ee_above_hole(self, env_ids: torch.Tensor):
         """Position hole near EE position (simplified IK approach).
 
