@@ -374,65 +374,77 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    """Full rewards configuration matching direct forge."""
+    """Full rewards configuration matching direct forge.
 
-    # Coarse keypoint tracking
+    Reward weights scaled to match direct forge magnitudes (~+300 to +400 range).
+    Keypoint coefficients match FactoryTask/ForgePegInsert exactly.
+    """
+
+    # Coarse keypoint tracking (direct forge: kp_coarse with weight 1.0, coef=[50, 2])
     keypoint_coarse = RewTerm(
         func=mdp.keypoint_peg_hole_error_exp,
-        weight=0.0033,
+        weight=1.0,
         params={
-            "kp_exp_coeffs": [(2.5, 2)],
-            "kp_use_sum_of_exps": True,
-            "keypoint_scale": 0.75,
-        },
-    )
-    # Fine keypoint tracking
-    keypoint_fine = RewTerm(
-        func=mdp.keypoint_peg_hole_error_exp,
-        weight=0.0033,
-        params={
-            "kp_exp_coeffs": [(5, 4)],
-            "kp_use_sum_of_exps": True,
+            "kp_exp_coeffs": [(50, 2)],  # Match direct forge kp_coarse: a=50, b=2
+            "kp_use_sum_of_exps": False,
             "keypoint_scale": 0.15,
         },
     )
-    # Action penalty (asset-relative)
+    # Fine keypoint tracking (direct forge: kp_fine with weight 1.0, coef=[100, 0])
+    keypoint_fine = RewTerm(
+        func=mdp.keypoint_peg_hole_error_exp,
+        weight=1.0,
+        params={
+            "kp_exp_coeffs": [(100, 0)],  # Match direct forge kp_fine: a=100, b=0
+            "kp_use_sum_of_exps": False,
+            "keypoint_scale": 0.15,
+        },
+    )
+    # Action penalty (asset-relative) - direct forge: action_penalty_asset_scale = 0.001
     action_penalty_asset = RewTerm(
         func=mdp.action_penalty_asset,
-        weight=0.0001,
+        weight=-0.001,
     )
-    # Contact force penalty
+    # Contact force penalty - direct forge ForgePegInsert: contact_penalty_scale = 0.2
     contact_penalty = RewTerm(
         func=mdp.contact_force_penalty,
-        weight=0.0005,
+        weight=-0.2,
     )
-    # Engaged bonus
+    # Engaged bonus (direct forge: curr_engaged with weight 1.0)
     curr_engaged = RewTerm(
         func=mdp.peg_insertion_engaged,
-        weight=0.002,
+        weight=1.0,
     )
-    # Success bonus
+    # Success bonus (direct forge: curr_success with weight 1.0)
     curr_success = RewTerm(
         func=mdp.peg_insertion_success,
-        weight=0.01,
+        weight=1.0,
     )
-    # Success prediction penalty
+    # Success prediction penalty (direct forge: success_pred_error with weight -1.0 when activated)
     success_pred_error = RewTerm(
         func=mdp.success_prediction_penalty,
-        weight=0.02,
+        weight=-1.0,
     )
-    # Action rate penalty
+    # Action rate penalty - direct forge: action_grad_penalty_scale = 0.1
     action_grad_penalty = RewTerm(
         func=mdp.action_rate_l2,
-        weight=0.001,
+        weight=-0.1,
     )
-    # Action magnitude penalty
+    # Action magnitude penalty (not in direct forge factory, set to 0)
     action_penalty = RewTerm(
         func=mdp.action_l2,
-        weight=0.0001,
+        weight=0.0,
     )
-    # Baseline keypoint reward (disabled in full config)
-    keypoint_baseline = RewTerm(func=mdp.keypoint_peg_hole_error_exp, weight=0.0)
+    # Baseline keypoint reward (direct forge: kp_baseline with weight 1.0, coef=[5, 4])
+    keypoint_baseline = RewTerm(
+        func=mdp.keypoint_peg_hole_error_exp,
+        weight=1.0,
+        params={
+            "kp_exp_coeffs": [(5, 4)],  # Match direct forge kp_baseline: a=5, b=4
+            "kp_use_sum_of_exps": False,
+            "keypoint_scale": 0.15,
+        },
+    )
 
 
 ##
