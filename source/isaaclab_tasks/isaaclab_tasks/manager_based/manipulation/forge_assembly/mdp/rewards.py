@@ -156,6 +156,9 @@ class keypoint_peg_hole_error_exp(ManagerTermBase):
         reward = torch.zeros(env.num_envs, device=env.device)
         for a, b in kp_exp_coeffs:
             reward += (1.0 / (torch.exp(a * kp_dist_mean) + b + torch.exp(-a * kp_dist_mean))).mean(dim=-1)
+
+        # Store for logging (flat dict for wandb/tensorboard)
+        env.extras[f"logs_rew_keypoint_exp"] = reward.mean()
         return reward
 
 
@@ -174,7 +177,11 @@ class contact_force_penalty(ManagerTermBase):
             return torch.zeros(env.num_envs, device=env.device)
         force_norm = env._force_smooth_norm
         threshold = env._contact_penalty_threshold.squeeze(-1)
-        return torch.nn.functional.relu(force_norm - threshold)
+        penalty = torch.nn.functional.relu(force_norm - threshold)
+
+        # Store for logging (flat dict for wandb/tensorboard)
+        env.extras["logs_rew_contact_penalty"] = penalty.mean()
+        return penalty
 
 
 class action_penalty_asset(ManagerTermBase):
@@ -198,7 +205,11 @@ class action_penalty_asset(ManagerTermBase):
         yaw_error = torch.abs(action_term.delta_yaw.squeeze(-1))
         rot_threshold = action_term._rot_threshold[:, 2]  # Use yaw threshold
         yaw_error_norm = yaw_error / rot_threshold
-        return pos_error_norm + yaw_error_norm
+        penalty = pos_error_norm + yaw_error_norm
+
+        # Store for logging (flat dict for wandb/tensorboard)
+        env.extras["logs_rew_action_penalty_asset"] = penalty.mean()
+        return penalty
 
 
 class peg_insertion_engaged(ManagerTermBase):
@@ -225,7 +236,11 @@ class peg_insertion_engaged(ManagerTermBase):
 
         is_centered = xy_dist < self._xy_threshold
         is_engaged = z_disp < (0.025 * self._engage_threshold)
-        return torch.logical_and(is_centered, is_engaged).float()
+        engaged = torch.logical_and(is_centered, is_engaged).float()
+
+        # Store for logging (flat dict for wandb/tensorboard)
+        env.extras["logs_rew_curr_engaged"] = engaged.mean()
+        return engaged
 
 
 class peg_insertion_success(ManagerTermBase):
@@ -252,7 +267,11 @@ class peg_insertion_success(ManagerTermBase):
 
         is_centered = xy_dist < self._xy_threshold
         is_below = z_disp < (0.025 * self._success_threshold)
-        return torch.logical_and(is_centered, is_below).float()
+        success = torch.logical_and(is_centered, is_below).float()
+
+        # Store for logging (flat dict for wandb/tensorboard)
+        env.extras["logs_rew_curr_success"] = success.mean()
+        return success
 
 
 class success_prediction_penalty(ManagerTermBase):
@@ -304,9 +323,12 @@ class success_prediction_penalty(ManagerTermBase):
 
         success_pred_error = (true_successes.float() - policy_success_pred).abs()
 
-        # Store for logging
-        env._success_pred_error = success_pred_error
-        env._true_success_rate = true_successes.float().mean()
-        env._success_pred_scale = self._success_pred_scale
+        # Scale by success_pred_scale
+        result = success_pred_error * self._success_pred_scale
 
-        return success_pred_error * self._success_pred_scale
+        # Store for logging (flat dict for wandb/tensorboard)
+        env.extras["logs_rew_success_pred_error"] = result.mean()
+        env.extras["logs_true_success_rate"] = true_successes.float().mean()
+        env.extras["logs_success_pred_scale"] = torch.tensor(self._success_pred_scale, device=env.device)
+
+        return result

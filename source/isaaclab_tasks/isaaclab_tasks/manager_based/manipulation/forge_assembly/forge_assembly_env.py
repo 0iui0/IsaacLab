@@ -67,12 +67,16 @@ class ForgeAssemblyEnv(ManagerBasedRLEnv):
 
         Direct forge places hole at EE position so peg starts close to hole.
         We replicate this by positioning hole near EE after base reset.
-        """
-        # Call parent reset to run all event terms
-        super()._reset_idx(env_ids)
 
-        # Position hole near EE so peg starts close to hole (matches direct forge)
+        Note: We position hole FIRST (before parent reset), then peg is attached
+        to EE during parent reset events. This ensures peg and hole start close.
+        """
+        # Position hole near EE FIRST, before event terms run
+        # This ensures peg attaches near hole (direct forge behavior)
         self._position_ee_above_hole(env_ids)
+
+        # Call parent reset to run all event terms (including reset_peg_to_ee)
+        super()._reset_idx(env_ids)
 
     def _position_ee_above_hole(self, env_ids: torch.Tensor):
         """Position hole near EE position (simplified IK approach).
@@ -80,6 +84,9 @@ class ForgeAssemblyEnv(ManagerBasedRLEnv):
         Direct forge uses iterative IK to place gripper at hole position.
         We use a simpler approach: move hole to where EE naturally reaches.
         This achieves the same effect - peg starts close to hole.
+
+        Direct forge: hand_init_pos_noise = [0.02, 0.02, 0.01] for EE-to-hole noise.
+        We add similar noise: ±10mm xy, ±5mm z.
         """
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
@@ -94,8 +101,11 @@ class ForgeAssemblyEnv(ManagerBasedRLEnv):
         hole_target_pos = ee_pos.clone()
         hole_target_pos[:, 2] -= 0.047
 
-        # Add small noise
-        pos_noise = (torch.rand((n, 3), device=self.device) * 2 - 1) * 0.01
+        # Add noise matching direct forge's hand_init_pos_noise [0.02, 0.02, 0.01]
+        # Using uniform ±10mm xy, ±5mm z (slightly larger for more variety)
+        pos_noise = (torch.rand((n, 3), device=self.device) * 2 - 1) * torch.tensor(
+            [0.01, 0.01, 0.005], device=self.device
+        )
         hole_target_pos += pos_noise
 
         # Set hole position (ee_pos is already world-frame, no env_origins needed)

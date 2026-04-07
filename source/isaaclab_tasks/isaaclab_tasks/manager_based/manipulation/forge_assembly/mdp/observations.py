@@ -6,8 +6,9 @@
 """Observation terms for the forge assembly (peg-in-hole) environment.
 
 Custom observation terms that replicate direct forge's observation structure.
-Standard terms (last_action, joint_pos_rel, root_pos_w, root_quat_w) come from
-isaaclab.envs.mdp via wildcard import.
+Standard terms (joint_pos_rel, root_pos_w, root_quat_w) come from
+isaaclab.envs.mdp. The last_action term is custom to match direct forge's
+behavior of zeroing roll/pitch action components in the observation.
 """
 
 from __future__ import annotations
@@ -242,10 +243,19 @@ class ft_force_smooth_noisy(ManagerTermBase):
         return target_F + noise
 
     def reset(self, env_ids: torch.Tensor | None = None) -> None:
+        """Reset force sensor smoothing buffer to match direct forge.
+
+        Direct forge explicitly zeroes force_sensor_world_smooth in _reset_idx
+        to prevent contact penalty from firing at initialization.
+        """
         if env_ids is not None:
             self._force_smooth[env_ids] = 0.0
+            if hasattr(self._env, "_force_smooth_norm"):
+                self._env._force_smooth_norm[env_ids] = 0.0
         else:
             self._force_smooth.zero_()
+            if hasattr(self._env, "_force_smooth_norm"):
+                self._env._force_smooth_norm.zero_()
 
 
 class contact_threshold_obs(ManagerTermBase):
@@ -345,3 +355,20 @@ class rot_threshold_obs(ManagerTermBase):
 
     def __call__(self, env: ManagerBasedRLEnv) -> torch.Tensor:
         return env._rot_threshold
+
+
+class last_action(ManagerTermBase):
+    """Last action with roll/pitch components zeroed (direct forge equivalent).
+
+    Direct forge: prev_actions observation has action[:, 3:5] zeroed because
+    only yaw rotation is used in the action space.
+    """
+
+    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+
+    def __call__(self, env: ManagerBasedRLEnv) -> torch.Tensor:
+        actions = env.action_manager.action.clone()
+        # Zero roll/pitch components (indices 3 and 4) to match direct forge
+        actions[:, 3:5] = 0.0
+        return actions

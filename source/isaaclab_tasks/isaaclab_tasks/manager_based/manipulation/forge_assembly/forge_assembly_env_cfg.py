@@ -255,27 +255,24 @@ class EventCfg:
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
     # Peg attaches to EE on reset with asset-in-gripper randomization
-    # Direct forge: held_asset_pos_noise randomizes peg position relative to EE before gripping
+    # Direct forge: peg placed at hole + [0, 0, 0.047] (47mm above hole tip)
+    # Manager forge: hole at EE - 0.047, so peg_offset=[0,0,0] puts peg at EE which is 47mm above hole
     reset_peg = EventTerm(
         func=mdp.reset_peg_to_ee,
         mode="reset",
-        params={"body_name": MISSING, "peg_offset": [0.0, 0.0, 0.05], "grip_noise_range": 0.02},
+        params={"body_name": MISSING, "peg_offset": [0.0, 0.0, 0.0], "grip_noise_range": 0.02},
     )
 
-    # Randomize hole pose
-    # Direct forge: hand_init_pos_noise = [0.02, 0.02, 0.01] (relative EE-to-hole noise)
-    # This replaces fixed_asset_init_pos_noise=[0.05,0.05,0.05] because we don't do IK
-    randomize_hole = EventTerm(
-        func=mdp.randomize_hole_pose,
-        mode="reset",
-        params={
-            # Reduced from ±20mm to ±5mm xy, ±2mm z — the success threshold
-            # is 2.5mm xy so randomization must be smaller for any chance of success.
-            # Direct forge uses IK-based init with hand_init_pos_noise=[0.005, 0.005, 0.002].
-            "pos_range": {"x": [-0.005, 0.005], "y": [-0.005, 0.005], "z": [-0.002, 0.002]},
-            "yaw_range": [-3.14159, 3.14159],
-        },
-    )
+    # Hole positioning handled by _position_ee_above_hole() in ForgeAssemblyEnv._reset_idx()
+    # which places hole at EE - 47mm + ±10mm noise (matching direct forge hand_init_pos_noise)
+    # randomize_hole = EventTerm(
+    #     func=mdp.randomize_hole_pose,
+    #     mode="reset",
+    #     params={
+    #         "pos_range": {"x": [-0.005, 0.005], "y": [-0.005, 0.005], "z": [-0.002, 0.002]},
+    #         "yaw_range": [-3.14159, 3.14159],
+    #     },
+    # )
 
     # Randomize controller gains (forge: +/-41%) - from isaaclab.envs.mdp
     randomize_gains = EventTerm(

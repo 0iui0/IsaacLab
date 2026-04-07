@@ -350,6 +350,12 @@ class ForgeAssemblyAction(ActionTerm):
         rand_flips = torch.rand(n, device=self.device) > 0.5
         self._flip_quats[env_ids[rand_flips]] = -1.0
 
+        # Reset force sensor smoothing buffer to match direct forge
+        # Direct forge zeroes force_sensor_world_smooth in _reset_idx (line 331)
+        # This prevents contact penalty from firing at initialization
+        if hasattr(self._env, "_force_smooth_norm"):
+            self._env._force_smooth_norm[env_ids] = 0.0
+
     def _sync_env_params(self, env_ids: torch.Tensor):
         """Sync randomized parameters from event terms on env to action term."""
         # Task gains
