@@ -331,10 +331,19 @@ class ForgeAssemblyAction(ActionTerm):
             ema_low, ema_high = self.cfg.ema_factor_range
             self._ema_factor[env_ids] = ema_low + torch.rand((n, 1), device=self.device) * (ema_high - ema_low)
 
-        # Reset actions to current EE state relative to hole
+        # Reset actions to current EE state relative to hole tip (matching direct forge line 276-281)
+        # Direct forge: fixed_pos_action_frame = fixed_pos_obs_frame + init_fixed_pos_obs_noise
+        # where fixed_pos_obs_frame = hole_tip_pos (hole root + height)
         hole_pos = self._get_hole_pos()
+        hole_tip_pos = hole_pos.clone()
+        hole_tip_pos[:, 2] += 0.025  # Peg/hole height (matches direct forge factory_hole_8mm.usd)
+
+        # Add observation noise for robustness (direct forge: init_fixed_pos_obs_noise ~ N(0, 0.001))
+        init_fixed_pos_obs_noise = torch.randn((n, 3), device=self.device) * 0.001
+        fixed_pos_action_frame = hole_tip_pos[env_ids] + init_fixed_pos_obs_noise
+
         ee_pos = self._robot.data.body_pos_w[env_ids, self._body_idx]
-        pos_actions = ee_pos - hole_pos[env_ids]
+        pos_actions = ee_pos - fixed_pos_action_frame
         pos_action_bounds = torch.tensor(self.cfg.pos_action_bounds, device=self.device)
         self._raw_actions[env_ids, 0:3] = pos_actions @ torch.diag(1.0 / pos_action_bounds)
         self._prev_actions[env_ids, 0:3] = self._raw_actions[env_ids, 0:3]
