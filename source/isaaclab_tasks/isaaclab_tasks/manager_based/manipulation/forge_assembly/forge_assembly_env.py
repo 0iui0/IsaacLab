@@ -19,7 +19,7 @@ import torch
 
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.envs.manager_based_rl_env_cfg import ManagerBasedRLEnvCfg
-from isaaclab.utils.math import quat_from_euler_xyz
+from isaaclab.utils.math import axis_angle_from_quat, quat_from_euler_xyz, quat_conjugate, quat_mul
 
 
 class ForgeAssemblyEnv(ManagerBasedRLEnv):
@@ -95,36 +95,89 @@ class ForgeAssemblyEnv(ManagerBasedRLEnv):
             obs_term._force_smooth[env_ids] = 0.0
 
     def _position_ee_above_hole(self, env_ids: torch.Tensor):
-        """Position hole near EE position (simplified IK approach).
+        """Position hole and use IK to match direct forge's initial state.
 
-        Direct forge uses iterative IK to place gripper at hole position.
-        We use a simpler approach: move hole to where EE naturally reaches.
-        This achieves the same effect - peg starts close to hole.
+        Direct forge uses iterative IK to:
+        1. Place gripper at hole_tip + [0, 0, 0.047] (47mm above hole)
+        2. Orient EE facing downward with Euler [π, 0, 0]
 
-        Direct forge: hand_init_pos_noise = [0.02, 0.02, 0.01] for EE-to-hole noise.
-        We add similar noise: ±10mm xy, ±5mm z.
+        We replicate this using differential IK to achieve the target EE pose.
+        This ensures peg starts aligned with hole axis, matching direct forge's
+        initial state where keypoint rewards start positive (~+92).
         """
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
         n = len(env_ids)
 
-        # Get current EE pose (where robot naturally sits after reset)
-        # Note: body_pos_w is already in world frame (includes env_origins)
-        ee_pos = self._robot.data.body_pos_w[env_ids, self._ee_body_idx]
+        # Target EE orientation: facing downward [π, 0, 0] in Euler XYZ
+        # This matches direct forge's hand_init_orn = [3.1416, 0.0, 0.0] for PegInsert
+        target_euler = torch.zeros((n, 3), device=self.device)
+        target_euler[:, 0] = torch.pi  # Roll 180° = facing down
+        target_quat = quat_from_euler_xyz(target_euler[:, 0], target_euler[:, 1], target_euler[:, 2])
+
+        # Get current EE pose from robot's default reset configuration
+        current_ee_pos = self._robot.data.body_pos_w[env_ids, self._ee_body_idx].clone()
+        current_ee_quat = self._robot.data.body_quat_w[env_ids, self._ee_body_idx].clone()
+
+        # Iterative differential IK to achieve target orientation
+        # Using Jacobian transpose method
+        max_iterations = 50
+        ik_gain = 0.1
+
+        for iter_idx in range(max_iterations):
+            # Get current EE orientation
+            current_ee_quat = self._robot.data.body_quat_w[env_ids, self._ee_body_idx]
+
+            # Compute orientation error: quat_error = target * current_conjugate
+            quat_error = quat_mul(target_quat, quat_conjugate(current_ee_quat))
+            # Ensure shortest path (flip if scalar component is negative)
+            quat_error = quat_error * torch.sign(quat_error[:, 0:1])
+
+            # Convert quaternion error to axis-angle representation
+            aa_error = axis_angle_from_quat(quat_error)
+            angle_error = torch.norm(aa_error, dim=1)
+
+            # Check convergence
+            if angle_error.max() < 1e-4:
+                break
+
+            # Get Jacobian for EE body from PhysX view
+            # Shape: (num_envs, num_bodies, 6, num_dof)
+            jacobians = self._robot.root_physx_view.get_jacobians()
+            # Extract Jacobian for EE body: (num_envs, 6, num_dof)
+            ee_jacobian = jacobians[env_ids, self._ee_body_idx, :, :]
+            # We only need rotational part (rows 3:6): (num_envs, 3, num_dof)
+            jacobian_rot = ee_jacobian[:, 3:6, :]
+
+            # Compute joint position update using Jacobian transpose
+            # delta_q = J^T * axis_angle_error * gain
+            delta_joint_pos = torch.matmul(jacobian_rot.transpose(1, 2), aa_error.unsqueeze(-1)).squeeze(-1)
+            delta_joint_pos = delta_joint_pos * ik_gain
+
+            # Get current joint positions and apply update
+            current_joints = self._robot.data.joint_pos[env_ids]
+            new_joints = current_joints + delta_joint_pos
+
+            # Write new joint positions
+            self._robot.write_joint_state_to_sim(new_joints, torch.zeros_like(new_joints), env_ids)
+
+            # Update robot simulation state
+            self._robot.write_to_sim()
+
+        # Get final EE position after IK convergence
+        ee_pos_final = self._robot.data.body_pos_w[env_ids, self._ee_body_idx]
 
         # Hole target: EE position - 47mm offset (peg will be 47mm above hole)
-        # Note: ee_pos is already in world frame, no need to add env_origins
-        hole_target_pos = ee_pos.clone()
+        hole_target_pos = ee_pos_final.clone()
         hole_target_pos[:, 2] -= 0.047
 
         # Add noise matching direct forge's hand_init_pos_noise [0.02, 0.02, 0.01]
-        # Using uniform ±10mm xy, ±5mm z (slightly larger for more variety)
         pos_noise = (torch.rand((n, 3), device=self.device) * 2 - 1) * torch.tensor(
             [0.01, 0.01, 0.005], device=self.device
         )
         hole_target_pos += pos_noise
 
-        # Set hole position (ee_pos is already world-frame, no env_origins needed)
+        # Set hole position
         hole_root_state = self._hole.data.root_state_w[env_ids].clone()
         hole_root_state[:, :3] = hole_target_pos
         self._hole.write_root_pose_to_sim(hole_root_state[:, :7], env_ids)

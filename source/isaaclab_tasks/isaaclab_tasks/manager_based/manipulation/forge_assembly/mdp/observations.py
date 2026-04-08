@@ -215,17 +215,9 @@ class ft_force_smooth_noisy(ManagerTermBase):
         smoothing_alpha: float = 0.25,
         noise_std: float = 1.0,
     ) -> torch.Tensor:
-        from isaaclab.utils.math import quat_apply, quat_conjugate
-
-        # Read raw wrench from PhysX in BODY frame
-        raw_wrench_b = self.robot.data.body_incoming_joint_wrench_b[:, self._ee_body_idx]
-
-        # Rotate force from body frame to WORLD frame
-        # Direct forge: get_link_incoming_joint_force() returns world-frame force
-        ee_quat = self.robot.data.body_quat_w[:, self._ee_body_idx]
-        raw_force_world = quat_apply(ee_quat, raw_wrench_b[:, :3])
-        raw_torque_world = quat_apply(ee_quat, raw_wrench_b[:, 3:6])
-        raw_wrench_world = torch.cat([raw_force_world, raw_torque_world], dim=-1)
+        # Read raw wrench from PhysX in WORLD frame (matching direct forge)
+        # Direct forge: self._robot.root_physx_view.get_link_incoming_joint_force()
+        raw_wrench_world = self.robot.root_physx_view.get_link_incoming_joint_force()[:, self._ee_body_idx]
 
         # EMA smoothing (direct forge: alpha * raw + (1-alpha) * prev)
         self._force_smooth = smoothing_alpha * raw_wrench_world + (1 - smoothing_alpha) * self._force_smooth

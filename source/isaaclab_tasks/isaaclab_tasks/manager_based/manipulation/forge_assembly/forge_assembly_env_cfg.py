@@ -406,11 +406,9 @@ class RewardsCfg:
         weight=-0.001,
     )
     # Contact force penalty - direct forge ForgePegInsert: contact_penalty_scale = 0.2
-    # TEMPORARILY REDUCED: Force sensor reading issue causing ~38N readings at reset
-    # TODO: Debug force sensor and restore to 0.2
     contact_penalty = RewTerm(
         func=mdp.contact_force_penalty,
-        weight=-0.002,  # Reduced from -0.2 (100x smaller)
+        weight=-0.2,  # Match direct forge
     )
     # Engaged bonus (direct forge: curr_engaged with weight 1.0)
     curr_engaged = RewTerm(
