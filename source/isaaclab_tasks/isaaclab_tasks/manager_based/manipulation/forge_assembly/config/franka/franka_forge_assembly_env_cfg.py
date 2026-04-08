@@ -118,6 +118,8 @@ class FrankaForgeAssemblyEnvCfg(ForgeAssemblyEnvCfg):
         self.actions.arm_action = ForgeAssemblyActionCfg(
             asset_name="robot",
             joint_names=["panda_joint[1-7]"],
+            gripper_joint_names=["panda_finger_joint.*"],  # Enable gripper control
+            gripper_dof_pos_target=0.0,  # Fully closed (matching direct forge)
             body_name="panda_hand",
             hole_name="hole",
             peg_name="peg",

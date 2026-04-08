@@ -54,6 +54,17 @@ class ForgeAssemblyAction(ActionTerm):
         self._joint_ids, self._joint_names = self._robot.find_joints(self.cfg.joint_names)
         self._num_arm_joints = len(self._joint_ids)
 
+        # Resolve gripper joint IDs if configured
+        if self.cfg.gripper_joint_names is not None:
+            self._gripper_joint_ids, self._gripper_joint_names = self._robot.find_joints(
+                self.cfg.gripper_joint_names
+            )
+            self._has_gripper = len(self._gripper_joint_ids) > 0
+        else:
+            self._gripper_joint_ids = []
+            self._gripper_joint_names = []
+            self._has_gripper = False
+
         # Resolve EE body index
         body_ids, _ = self._robot.find_bodies(self.cfg.body_name)
         self._body_idx = body_ids[0]
@@ -281,6 +292,12 @@ class ForgeAssemblyAction(ActionTerm):
 
         # Apply to robot
         self._robot.set_joint_effort_target(dof_torque, joint_ids=self._joint_ids)
+
+        # Apply gripper target position if configured (matching direct forge ctrl_target_gripper_dof_pos=0.0)
+        if self._has_gripper:
+            self._robot.set_joint_position_target(
+                self.cfg.gripper_dof_pos_target, joint_ids=self._gripper_joint_ids
+            )
 
         # --- Peg tracking removed ---
         # In direct forge, the peg is a free rigid body held by gripper friction.

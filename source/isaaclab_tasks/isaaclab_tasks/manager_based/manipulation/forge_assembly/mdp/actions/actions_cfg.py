@@ -92,3 +92,9 @@ class ForgeAssemblyActionCfg(ActionTermCfg):
     # Contact penalty
     contact_penalty_threshold_range: list[float] = [5.0, 10.0]
     """Range for contact penalty threshold randomization."""
+
+    gripper_joint_names: list[str] = None
+    """Gripper joint names for setting gripper target position. If None, gripper control is disabled."""
+
+    gripper_dof_pos_target: float = 0.0
+    """Target gripper DOF position (0.0 = fully closed, matching direct forge)."""
