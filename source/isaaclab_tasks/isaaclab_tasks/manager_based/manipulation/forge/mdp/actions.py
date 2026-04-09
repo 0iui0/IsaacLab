@@ -76,6 +76,11 @@ class ForgeImpedanceAction(ActionTerm):
         default_gains = torch.tensor(cfg.default_task_prop_gains, device=self.device)
         self.default_gains = default_gains.unsqueeze(0).repeat(self.num_envs, 1)
 
+        # Reset gains (stiffer for initialization)
+        reset_gains = torch.tensor(cfg.reset_task_prop_gains, device=self.device)
+        self.reset_gains = reset_gains.unsqueeze(0).repeat(self.num_envs, 1)
+        self.reset_rot_deriv_scale = cfg.reset_rot_deriv_scale
+
         default_pos_threshold = torch.tensor(cfg.pos_action_threshold, device=self.device)
         self.default_pos_threshold = default_pos_threshold.unsqueeze(0).repeat(self.num_envs, 1)
 
@@ -275,6 +280,48 @@ class ForgeImpedanceAction(ActionTerm):
         # Set gripper position target (closed), matching direct: set_joint_position_target with gripper=0.0
         gripper_target = torch.zeros((self.num_envs, self._asset.num_joints), device=self.device)
         self._asset.set_joint_position_target(gripper_target)
+
+    def apply_initialization_control(self, env_ids: torch.Tensor | None = None):
+        """Apply impedance control during initialization to hold arm in place.
+
+        Uses stiffer reset gains and maintains current EE pose while gripper closes.
+        This matches direct version's close_gripper_in_place() behavior.
+        """
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+
+        # Set reset gains for stiffer control
+        self.task_prop_gains[env_ids] = self.reset_gains[env_ids]
+        self.task_deriv_gains[env_ids] = self._get_deriv_gains(
+            self.task_prop_gains[env_ids], self.reset_rot_deriv_scale
+        )
+
+        # Compute intermediate values for current state
+        self._compute_intermediate_values()
+
+        # Target is current EE pose (hold in place)
+        target_pos = self._fingertip_midpoint_pos.clone()
+        target_quat = self._fingertip_midpoint_quat.clone()
+
+        # Compute impedance torques
+        dof_torque = self._compute_dof_torque(target_pos, target_quat)
+
+        # Apply torques to arm joints
+        full_torque = torch.zeros((self.num_envs, self._asset.num_joints), device=self.device)
+        full_torque[:, self._joint_ids] = dof_torque[:, :self._num_arm_joints]
+        self._asset.set_joint_effort_target(full_torque)
+
+        # Set gripper position target to closed (0.0)
+        gripper_target = torch.zeros((self.num_envs, self._asset.num_joints), device=self.device)
+        self._asset.set_joint_position_target(gripper_target)
+
+    def restore_default_gains(self, env_ids: torch.Tensor | None = None):
+        """Restore default impedance gains after initialization."""
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+
+        self.task_prop_gains[env_ids] = self.default_gains[env_ids]
+        self.task_deriv_gains[env_ids] = self._get_deriv_gains(self.task_prop_gains[env_ids])
 
     def _compute_intermediate_values(self):
         """Compute noisy fingertip state, forces, Jacobian, mass matrix.
@@ -535,6 +582,10 @@ class ForgeImpedanceActionCfg(ActionTermCfg):
 
     # Default impedance gains [lin_x, lin_y, lin_z, rot_x, rot_y, rot_z]
     default_task_prop_gains: list[float] = [565.0, 565.0, 565.0, 28.0, 28.0, 28.0]
+
+    # Reset impedance gains (stiffer for initialization)
+    reset_task_prop_gains: list[float] = [300.0, 300.0, 300.0, 20.0, 20.0, 20.0]
+    reset_rot_deriv_scale: float = 10.0
 
     # Action bounds
     pos_action_bounds: list[float] = [0.05, 0.05, 0.05]

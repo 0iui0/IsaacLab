@@ -93,9 +93,11 @@ class ForgeEnv(ManagerBasedRLEnv):
         """Initialize robot and held asset to match direct version.
 
         This method:
-        1. Positions robot hand above fixed asset using IK
-        2. Places held asset in gripper
-        3. Closes gripper
+        1. Disables gravity for stable initialization
+        2. Positions robot hand above fixed asset using IK
+        3. Places held asset in gripper
+        4. Closes gripper
+        5. Restores gravity
         """
         if self._action_term is None:
             logger.warning("[ForgeEnv] Action term not found, skipping initialization")
@@ -104,6 +106,14 @@ class ForgeEnv(ManagerBasedRLEnv):
         logger.info(f"[ForgeEnv] Initializing {len(env_ids)} environments...")
         logger.info(f"[ForgeEnv] Fixed asset pos: {self._fixed_asset.data.root_pos_w[env_ids[0]]}")
         logger.info(f"[ForgeEnv] Robot initial joint pos: {self._robot.data.joint_pos[env_ids[0], :7]}")
+
+        # Disable gravity during initialization (matching direct version)
+        try:
+            import carb
+            physics_sim_view = self.sim.physics_sim_view
+            physics_sim_view.set_gravity(carb.Float3(0.0, 0.0, 0.0))
+        except Exception as e:
+            logger.warning(f"[ForgeEnv] Could not disable gravity: {e}")
 
         # Step 0: Reset robot to default pose for IK convergence (matching direct version)
         self._set_robot_to_default_pose(env_ids)
@@ -116,6 +126,14 @@ class ForgeEnv(ManagerBasedRLEnv):
 
         # Step 3: Close gripper
         self._close_gripper(env_ids)
+
+        # Restore gravity after initialization
+        try:
+            import carb
+            physics_sim_view = self.sim.physics_sim_view
+            physics_sim_view.set_gravity(carb.Float3(*self.cfg.sim.gravity))
+        except Exception as e:
+            logger.warning(f"[ForgeEnv] Could not restore gravity: {e}")
 
         logger.info(f"[ForgeEnv] Held asset final pos: {self._held_asset.data.root_pos_w[env_ids[0]]}")
         logger.info("[ForgeEnv] Initialization complete")
@@ -307,21 +325,26 @@ class ForgeEnv(ManagerBasedRLEnv):
         self.scene.update(dt=self.physics_dt)
 
     def _close_gripper(self, env_ids):
-        """Close gripper to grasp held asset.
+        """Close gripper to grasp held asset using impedance control.
 
-        Matches direct version's gripper closing logic.
+        Matches direct version's gripper closing logic:
+        1. Set reset gains (stiffer)
+        2. Apply impedance control to hold arm in place
+        3. Let gripper close via position target
+        4. Restore default gains after
         """
         grasp_time = 0.0
         grasp_duration = 0.25
         dt = self.physics_dt
 
-        while grasp_time < grasp_duration:
-            # Set gripper target to closed
-            joint_pos = self._robot.data.joint_pos[env_ids].clone()
-            joint_pos[:, 7:] = 0.0  # Close gripper
-            joint_vel = torch.zeros_like(joint_pos)
+        # Step once before closing to settle the held asset
+        self.scene.write_data_to_sim()
+        self.sim.step(render=False)
+        self.scene.update(dt=self.physics_dt)
 
-            self._robot.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
+        while grasp_time < grasp_duration:
+            # Apply impedance control to hold arm in place while gripper closes
+            self._action_term.apply_initialization_control(env_ids)
 
             # Step simulation
             self.scene.write_data_to_sim()
@@ -329,6 +352,9 @@ class ForgeEnv(ManagerBasedRLEnv):
             self.scene.update(dt=self.physics_dt)
 
             grasp_time += dt
+
+        # Restore default gains after initialization
+        self._action_term.restore_default_gains(env_ids)
 
     def _get_held_asset_relative_pose(self, env_ids):
         """Get default relative pose between held asset and fingertip.
