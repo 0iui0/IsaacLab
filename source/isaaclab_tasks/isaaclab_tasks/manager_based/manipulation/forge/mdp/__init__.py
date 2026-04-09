@@ -54,6 +54,7 @@ from .events import (
     randomize_contact_threshold,
     randomize_dead_zone,
     randomize_ema_factor,
+    randomize_fixed_asset_pose,
     randomize_flip_quats,
     randomize_impedance_gains,
     reset_action_state,

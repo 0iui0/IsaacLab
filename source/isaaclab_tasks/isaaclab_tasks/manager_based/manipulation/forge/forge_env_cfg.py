@@ -242,6 +242,18 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for randomization events matching direct ForgeEnv._reset_idx()."""
 
+    # Randomize fixed asset pose (MUST be first to establish reference frame)
+    randomize_fixed_asset_pose = EventTerm(
+        func=forge_mdp.randomize_fixed_asset_pose,
+        mode="reset",
+        params={
+            "fixed_cfg": SceneEntityCfg("fixed_asset"),
+            "pos_noise": [0.05, 0.05, 0.05],
+            "orn_init_deg": 0.0,
+            "orn_range_deg": 360.0,
+        },
+    )
+
     # Reset-level randomization (called at episode start)
     randomize_impedance_gains = EventTerm(
         func=forge_mdp.randomize_impedance_gains,

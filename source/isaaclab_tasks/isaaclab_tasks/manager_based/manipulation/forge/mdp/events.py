@@ -6,6 +6,7 @@
 """Event functions for FORGE tasks matching direct version's randomization.
 
 Randomization events matching ForgeEnv._reset_idx() and ForgeEventCfg:
+- randomize_fixed_asset_pose: Position/orientation noise on fixed asset
 - randomize_impedance_gains: Kp +/- 41% multiplicative noise, Kd = 2*sqrt(Kp)
 - randomize_action_thresholds: pos +/- 25%, rot +/- 29%
 - randomize_ema_factor: uniform [0.025, 0.1]
@@ -16,12 +17,14 @@ Randomization events matching ForgeEnv._reset_idx() and ForgeEventCfg:
 
 from __future__ import annotations
 
+import numpy as np
 import torch
 
 import isaacsim.core.utils.torch as torch_utils
 
 from isaaclab.assets import Articulation
 from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.managers import SceneEntityCfg
 
 from .actions import get_random_prop_gains
 
@@ -32,6 +35,63 @@ def _get_action_term(env: ManagerBasedRLEnv):
         if hasattr(term, "noisy_fingertip_pos"):
             return term
     raise RuntimeError("ForgeImpedanceAction term not found in action manager")
+
+
+def randomize_fixed_asset_pose(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    fixed_cfg: SceneEntityCfg,
+    pos_noise: list[float] = [0.05, 0.05, 0.05],
+    orn_init_deg: float = 0.0,
+    orn_range_deg: float = 360.0,
+):
+    """Randomize fixed asset position and orientation.
+
+    Matches direct FactoryEnv.randomize_initial_state() step (1):
+    - Add uniform noise to position
+    - Randomize yaw orientation
+
+    Args:
+        env: The environment instance.
+        env_ids: Environment IDs to randomize.
+        fixed_cfg: Scene entity config for the fixed asset.
+        pos_noise: Position noise range [x, y, z].
+        orn_init_deg: Initial orientation in degrees.
+        orn_range_deg: Orientation range in degrees.
+    """
+    fixed_asset: Articulation = env.scene[fixed_cfg.name]
+
+    if env_ids is None or len(env_ids) == env.num_envs:
+        env_ids = torch.arange(env.num_envs, device=env.device)
+
+    # Get current state
+    fixed_state = fixed_asset.data.root_state_w[env_ids].clone()
+
+    # (1.a) Position noise
+    rand_sample = torch.rand((len(env_ids), 3), dtype=torch.float32, device=env.device)
+    pos_init_rand = 2 * (rand_sample - 0.5)  # [-1, 1]
+    pos_noise_tensor = torch.tensor(pos_noise, dtype=torch.float32, device=env.device)
+    pos_init_rand = pos_init_rand @ torch.diag(pos_noise_tensor)
+
+    # Add noise relative to default position (remove env origin first, add noise, then add back)
+    default_pos = fixed_asset.data.default_root_state[env_ids, 0:3]
+    fixed_state[:, 0:3] = default_pos + pos_init_rand + env.scene.env_origins[env_ids]
+
+    # (1.b) Orientation noise (yaw only)
+    orn_init_yaw = np.deg2rad(orn_init_deg)
+    orn_yaw_range = np.deg2rad(orn_range_deg)
+    rand_sample = torch.rand((len(env_ids), 3), dtype=torch.float32, device=env.device)
+    orn_euler = orn_init_yaw + orn_yaw_range * rand_sample
+    orn_euler[:, 0:2] = 0.0  # Only change yaw
+    orn_quat = torch_utils.quat_from_euler_xyz(orn_euler[:, 0], orn_euler[:, 1], orn_euler[:, 2])
+    fixed_state[:, 3:7] = orn_quat
+
+    # (1.c) Zero velocity
+    fixed_state[:, 7:] = 0.0
+
+    # Write to simulation
+    fixed_asset.write_root_pose_to_sim(fixed_state[:, 0:7], env_ids=env_ids)
+    fixed_asset.write_root_velocity_to_sim(fixed_state[:, 7:], env_ids=env_ids)
 
 
 def randomize_impedance_gains(
