@@ -9,8 +9,6 @@ The robot must insert a peg into a hole.
 Episode length: 10s, success_threshold: 0.04, contact_penalty_weight: -0.2
 """
 
-from dataclasses import MISSING
-
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg, TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
@@ -39,14 +37,13 @@ class FrankaPegInsertEnvCfg(FrankaForgeEnvCfg):
         # Episode length
         self.episode_length_s = 10.0
 
-        # Set fixed asset geometry for observation frame computation
+        # Fixed asset geometry for observation frame computation
+        fixed_asset_cfg = PegInsertFixedAssetCfg()
+
         self.actions.arm_action.fixed_asset_height = fixed_asset_cfg.height
         self.actions.arm_action.fixed_asset_base_height = fixed_asset_cfg.base_height
         self.actions.arm_action.fixed_asset_offset_x = 0.0
         self.actions.arm_action.fixed_asset_pos_noise = [0.001, 0.001, 0.001]
-
-        # Override reward terms with peg_insert specific parameters
-        fixed_asset_cfg = PegInsertFixedAssetCfg()
 
         self.rewards.kp_baseline = RewTerm(
             func=forge_mdp.kp_baseline,

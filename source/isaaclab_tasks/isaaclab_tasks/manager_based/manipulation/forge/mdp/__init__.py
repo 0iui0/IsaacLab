@@ -58,6 +58,7 @@ from .events import (
     randomize_impedance_gains,
     reset_action_state,
     reset_force_sensor,
+    update_fixed_pos_obs_frame,
 )
 
 from .terminations import task_success, time_out

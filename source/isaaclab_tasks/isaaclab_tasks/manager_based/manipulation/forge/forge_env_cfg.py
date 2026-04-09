@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import MISSING
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import AssetBaseCfg, RigidObjectCfg
+from isaaclab.assets import AssetBaseCfg, ArticulationCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import ActionTermCfg as ActionTerm
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -77,9 +77,9 @@ class ForgeSceneCfg(InteractiveSceneCfg):
     # robot (override in task-specific configs)
     robot: AssetBaseCfg = MISSING
 
-    # manipulation assets
-    fixed_asset: RigidObjectCfg = MISSING
-    held_asset: RigidObjectCfg = MISSING
+    # manipulation assets (use ArticulationCfg to match direct version)
+    fixed_asset: ArticulationCfg = MISSING
+    held_asset: ArticulationCfg = MISSING
 
     # lights
     light = AssetBaseCfg(

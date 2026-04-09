@@ -25,7 +25,7 @@ import torch
 
 import isaacsim.core.utils.torch as torch_utils
 
-from isaaclab.assets import RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
 

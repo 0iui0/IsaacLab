@@ -41,7 +41,7 @@ import torch
 
 import isaacsim.core.utils.torch as torch_utils
 
-from isaaclab.assets import Articulation, RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
 
@@ -186,7 +186,7 @@ def joint_pos_arm(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Te
 
 def held_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Held asset position in environment frame (3D)."""
-    asset: RigidObject = env.scene[asset_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
     return asset.data.root_pos_w - env.scene.env_origins
 
 
@@ -197,26 +197,26 @@ def held_pos_rel_fixed(
 ) -> torch.Tensor:
     """Held asset position relative to fixed asset observation frame (3D)."""
     action_term = _get_action_term(env)
-    held_asset: RigidObject = env.scene[held_cfg.name]
+    held_asset: Articulation = env.scene[held_cfg.name]
     held_p = held_asset.data.root_pos_w - env.scene.env_origins
     return held_p - action_term.fixed_pos_obs_frame
 
 
 def held_quat(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Held asset quaternion (4D)."""
-    asset: RigidObject = env.scene[asset_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
     return asset.data.root_quat_w
 
 
 def fixed_pos(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Fixed asset position in environment frame (3D)."""
-    asset: RigidObject = env.scene[asset_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
     return asset.data.root_pos_w - env.scene.env_origins
 
 
 def fixed_quat(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     """Fixed asset quaternion (4D)."""
-    asset: RigidObject = env.scene[asset_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
     return asset.data.root_quat_w
 
 
@@ -338,8 +338,8 @@ def compute_keypoint_distance(
     fixed_asset_cfg,
 ) -> torch.Tensor:
     """Compute mean keypoint distance between held and fixed assets (num_envs,)."""
-    held_asset: RigidObject = env.scene[held_cfg.name]
-    fixed_asset: RigidObject = env.scene[fixed_cfg.name]
+    held_asset: Articulation = env.scene[held_cfg.name]
+    fixed_asset: Articulation = env.scene[fixed_cfg.name]
 
     held_pos_w = held_asset.data.root_pos_w - env.scene.env_origins
     held_quat_w = held_asset.data.root_quat_w

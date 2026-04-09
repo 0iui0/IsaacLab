@@ -30,7 +30,7 @@ import torch
 
 import isaacsim.core.utils.torch as torch_utils
 
-from isaaclab.assets import Articulation, RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.managers import ActionTerm, ActionTermCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.math import axis_angle_from_quat
@@ -65,7 +65,7 @@ class ForgeImpedanceAction(ActionTerm):
             self._force_sensor_body_idx = self._asset.body_names.index(cfg.body_name)
 
         # Fixed asset reference
-        self._fixed_asset: RigidObject = self._env.scene[cfg.fixed_asset_name]
+        self._fixed_asset: Articulation = self._env.scene[cfg.fixed_asset_name]
 
         # ---- Action dimensions: 7D ----
         self._action_dim = 7

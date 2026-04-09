@@ -22,7 +22,7 @@ import torch
 
 import isaacsim.core.utils.torch as torch_utils
 
-from isaaclab.assets import RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.managers import SceneEntityCfg
 
@@ -60,8 +60,8 @@ def _check_success(
     Returns:
         Boolean tensor of shape (num_envs,) indicating success.
     """
-    held_asset: RigidObject = env.scene[held_cfg.name]
-    fixed_asset: RigidObject = env.scene[fixed_cfg.name]
+    held_asset: Articulation = env.scene[held_cfg.name]
+    fixed_asset: Articulation = env.scene[fixed_cfg.name]
 
     held_pos = held_asset.data.root_pos_w - env.scene.env_origins
     held_quat = held_asset.data.root_quat_w

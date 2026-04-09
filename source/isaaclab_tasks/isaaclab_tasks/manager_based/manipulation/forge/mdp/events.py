@@ -20,7 +20,7 @@ import torch
 
 import isaacsim.core.utils.torch as torch_utils
 
-from isaaclab.assets import RigidObject
+from isaaclab.assets import Articulation
 from isaaclab.envs import ManagerBasedRLEnv
 
 from .actions import get_random_prop_gains
@@ -202,7 +202,7 @@ def update_fixed_pos_obs_frame(
     cfg = action_term.cfg
 
     # Read fixed asset position from the scene
-    fixed_asset: RigidObject = env.scene[cfg.fixed_asset_name]
+    fixed_asset: Articulation = env.scene[cfg.fixed_asset_name]
     fixed_pos = fixed_asset.data.root_pos_w - env.scene.env_origins
     fixed_quat = fixed_asset.data.root_quat_w
 
