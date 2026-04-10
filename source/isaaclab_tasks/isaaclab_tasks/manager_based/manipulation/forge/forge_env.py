@@ -26,6 +26,7 @@ import torch
 import isaacsim.core.utils.torch as torch_utils
 
 from isaaclab.envs import ManagerBasedRLEnv
+from isaaclab.utils.math import axis_angle_from_quat
 
 if TYPE_CHECKING:
     from .forge_env_cfg import ForgeEnvCfg
@@ -239,8 +240,8 @@ class ForgeEnv(ManagerBasedRLEnv):
             quat_inv = torch_utils.quat_conjugate(fingertip_quat) / quat_norm.unsqueeze(-1)
             quat_error = torch_utils.quat_mul(target_quat_adj, quat_inv)
 
-            # Convert to axis-angle
-            axis_angle_error = self._quat_to_axis_angle(quat_error)
+            # Convert to axis-angle using isaaclab's implementation
+            axis_angle_error = axis_angle_from_quat(quat_error)
 
             delta_pose = torch.cat((pos_error, axis_angle_error), dim=1)
 
@@ -289,19 +290,31 @@ class ForgeEnv(ManagerBasedRLEnv):
         fingertip_pos = self._robot.data.body_pos_w[env_ids, fingertip_body_idx] - self.scene.env_origins[env_ids]
         fingertip_quat = self._robot.data.body_quat_w[env_ids, fingertip_body_idx]
 
+        # Debug logging
+        logger.info(f"[ForgeEnv] Place held asset - fingertip_pos[0]: {fingertip_pos[0]}")
+        logger.info(f"[ForgeEnv] Place held asset - fingertip_quat[0]: {fingertip_quat[0]}")
+
         # Flip gripper z orientation
         flip_z_quat = torch.tensor([0.0, 0.0, 1.0, 0.0], device=self.device).unsqueeze(0).repeat(len(env_ids), 1)
         fingertip_flipped_quat, fingertip_flipped_pos = torch_utils.tf_combine(
             q1=fingertip_quat, t1=fingertip_pos, q2=flip_z_quat, t2=torch.zeros((len(env_ids), 3), device=self.device)
         )
 
+        logger.info(f"[ForgeEnv] Place held asset - fingertip_flipped_pos[0]: {fingertip_flipped_pos[0]}")
+        logger.info(f"[ForgeEnv] Place held asset - fingertip_flipped_quat[0]: {fingertip_flipped_quat[0]}")
+
         # Get held asset relative pose
         held_relative_pos, held_relative_quat = self._get_held_asset_relative_pose(env_ids)
         asset_in_hand_quat, asset_in_hand_pos = torch_utils.tf_inverse(held_relative_quat, held_relative_pos)
 
+        logger.info(f"[ForgeEnv] Place held asset - held_relative_pos[0]: {held_relative_pos[0]}")
+        logger.info(f"[ForgeEnv] Place held asset - asset_in_hand_pos[0]: {asset_in_hand_pos[0]}")
+
         translated_held_quat, translated_held_pos = torch_utils.tf_combine(
             q1=fingertip_flipped_quat, t1=fingertip_flipped_pos, q2=asset_in_hand_quat, t2=asset_in_hand_pos
         )
+
+        logger.info(f"[ForgeEnv] Place held asset - translated_held_pos[0] before noise: {translated_held_pos[0]}")
 
         # Add held asset noise
         held_asset_pos_noise_level = torch.tensor(self._init_cfg.held_asset_pos_noise, device=self.device)
@@ -310,19 +323,28 @@ class ForgeEnv(ManagerBasedRLEnv):
 
         translated_held_pos += held_asset_pos_noise
 
+        logger.info(f"[ForgeEnv] Place held asset - translated_held_pos[0] after noise: {translated_held_pos[0]}")
+
         # Write held asset state
         held_state = self._held_asset.data.root_state_w[env_ids].clone()
         held_state[:, 0:3] = translated_held_pos + self.scene.env_origins[env_ids]
         held_state[:, 3:7] = translated_held_quat
         held_state[:, 7:] = 0.0  # Zero velocity
 
+        logger.info(f"[ForgeEnv] Place held asset - held_state[0, 0:3] (world): {held_state[0, 0:3]}")
+        logger.info(f"[ForgeEnv] Place held asset - env_origins[env_ids[0]]: {self.scene.env_origins[env_ids[0]]}")
+
         self._held_asset.write_root_pose_to_sim(held_state[:, 0:7], env_ids=env_ids)
         self._held_asset.write_root_velocity_to_sim(held_state[:, 7:], env_ids=env_ids)
+        self._held_asset.reset(env_ids=env_ids)  # Reset internal state, matching direct version
 
         # Step simulation
         self.scene.write_data_to_sim()
         self.sim.step(render=False)
         self.scene.update(dt=self.physics_dt)
+
+        # Log held asset position after step
+        logger.info(f"[ForgeEnv] Place held asset - held asset pos after step: {self._held_asset.data.root_pos_w[env_ids[0]]}")
 
     def _close_gripper(self, env_ids):
         """Close gripper to grasp held asset using impedance control.
@@ -342,6 +364,9 @@ class ForgeEnv(ManagerBasedRLEnv):
         self.sim.step(render=False)
         self.scene.update(dt=self.physics_dt)
 
+        logger.info(f"[ForgeEnv] Close gripper - held asset pos before loop: {self._held_asset.data.root_pos_w[env_ids[0]]}")
+
+        step_count = 0
         while grasp_time < grasp_duration:
             # Apply impedance control to hold arm in place while gripper closes
             self._action_term.apply_initialization_control(env_ids)
@@ -352,6 +377,13 @@ class ForgeEnv(ManagerBasedRLEnv):
             self.scene.update(dt=self.physics_dt)
 
             grasp_time += dt
+            step_count += 1
+
+            # Log every few steps
+            if step_count % 10 == 0:
+                logger.info(f"[ForgeEnv] Close gripper step {step_count} - held asset pos: {self._held_asset.data.root_pos_w[env_ids[0]]}")
+
+        logger.info(f"[ForgeEnv] Close gripper complete - held asset pos: {self._held_asset.data.root_pos_w[env_ids[0]]}")
 
         # Restore default gains after initialization
         self._action_term.restore_default_gains(env_ids)

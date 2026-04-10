@@ -303,16 +303,21 @@ class ForgeImpedanceAction(ActionTerm):
         target_pos = self._fingertip_midpoint_pos.clone()
         target_quat = self._fingertip_midpoint_quat.clone()
 
-        # Compute impedance torques
+        # Compute impedance torques for arm
         dof_torque = self._compute_dof_torque(target_pos, target_quat)
 
-        # Apply torques to arm joints
+        # Apply torques to arm joints ONLY (indices 0:7)
+        # The gripper joints (7:) should be controlled via position target
         full_torque = torch.zeros((self.num_envs, self._asset.num_joints), device=self.device)
         full_torque[:, self._joint_ids] = dof_torque[:, :self._num_arm_joints]
+        # Zero torque for gripper joints (they use position control)
+        full_torque[:, self._num_arm_joints:] = 0.0
         self._asset.set_joint_effort_target(full_torque)
 
         # Set gripper position target to closed (0.0)
-        gripper_target = torch.zeros((self.num_envs, self._asset.num_joints), device=self.device)
+        # Match direct version: ctrl_target_joint_pos[:, 7:9] = 0.0
+        gripper_target = self._asset.data.joint_pos.clone()
+        gripper_target[:, self._num_arm_joints:] = 0.0  # Close gripper
         self._asset.set_joint_position_target(gripper_target)
 
     def restore_default_gains(self, env_ids: torch.Tensor | None = None):

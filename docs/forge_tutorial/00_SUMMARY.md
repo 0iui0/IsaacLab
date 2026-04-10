@@ -17,6 +17,9 @@ docs/forge_tutorial/
 ├── 01_complete_call_chain.md            # 完整调用链路详解
 ├── 02_inheritance_hierarchy.md          # 继承关系详解
 ├── 03_impedance_control_theory.md       # 阻抗控制原理
+├── 04_sim2real_dynamics_analysis.md     # Sim-to-Real 动力学偏差分析
+├── 05_direct_vs_manager_comparison.md   # Direct vs Manager-based 实现差异分析
+├── 06_traditional_control_guide.md      # 传统阻抗控制指南
 └── 00_SUMMARY.md                        # 本总结文档
 ```
 

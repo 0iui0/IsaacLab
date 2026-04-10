@@ -19,17 +19,28 @@
 - 雅可比矩阵转置的物理意义
 - PD 控制律设计
 
-### 4. [轴孔装配控制策略](./04_assembly_control_strategy.md)
+### 4. [Sim-to-Real 动力学偏差分析](./04_sim2real_dynamics_analysis.md)
+- 策略输入输出为何看起来与 URDF 无关（运动学抽象性证明）
+- 质量/惯量不一致导致部署失败的严格数学推导
+- 闭环轨迹偏差的受迫二阶系统分析
+- 域随机化策略的有效性评估
+
+### 5. [Direct vs Manager-based 实现对比](./05_direct_vs_manager_comparison.md)
+- 逐函数、逐公式精确对比两个 FORGE 实现
+- 7 处实际差异及对仿真的影响分析
+- 修复建议
+
+### 6. [轴孔装配控制策略](./06_assembly_control_strategy.md)
 - 分阶段装配策略
 - 参数调优方法
 - 阻抗控制的优势
 
-### 5. [成功预测机制](./05_success_prediction.md)
+### 7. [成功预测机制](./07_success_prediction.md)
 - FORGE 的核心创新
 - 第 7 维动作的作用
 - 早期终止策略
 
-### 6. [力传感器集成](./06_force_sensor_integration.md)
+### 8. [力传感器集成](./08_force_sensor_integration.md)
 - 力传感器数据处理
 - EMA 平滑算法
 - 观测空间设计
@@ -40,7 +51,9 @@
 
 1. 先读 [继承关系详解](./02_inheritance_hierarchy.md) 理解架构
 2. 再读 [阻抗控制器原理](./03_impedance_control_theory.md) 理解控制
-3. 最后读 [轴孔装配控制策略](./04_assembly_control_strategy.md) 理解应用
+3. 再读 [Sim-to-Real 动力学偏差分析](./04_sim2real_dynamics_analysis.md) 理解部署挑战
+4. 再读 [Direct vs Manager-based 对比](./05_direct_vs_manager_comparison.md) 理解两个实现的差异
+5. 最后读 [轴孔装配控制策略](./06_assembly_control_strategy.md) 理解应用
 
 ## 📖 代码注释
 
