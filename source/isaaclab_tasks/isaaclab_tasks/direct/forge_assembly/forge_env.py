@@ -175,10 +175,7 @@ class ForgeEnv(DirectRLEnv):
             peg_prim_path,
             peg_cfg,
             translation=(peg_offset[0], peg_offset[1], peg_offset[2]),
-            # UR10 ee_link at zero pose: X-axis points forward (horizontal), Z-axis points up.
-            # To make peg (along cylinder X-axis) point downward (-Z world),
-            # rotate peg 90° around ee_link Y-axis: (w=0.707, x=0, y=-0.707, z=0)
-            orientation=(0.7071, 0.0, -0.7071, 0.0),
+            orientation=(1.0, 0.0, 0.0, 0.0),  # Identity - peg aligned with ee_link frame
         )
 
     # -----------------------------------------------------------------------
