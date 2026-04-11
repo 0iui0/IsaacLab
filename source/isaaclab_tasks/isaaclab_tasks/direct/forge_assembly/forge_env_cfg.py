@@ -305,10 +305,12 @@ class FrankaForgeTaskNutThreadCfg(ForgeTaskNutThreadCfg):
 class EventCfgFixedPeg(EventCfg):
     """Event configuration for fixed-peg robots (UR10/CR5).
 
-    The peg is a separate articulation (held_asset) but has fixed mass.
+    The peg is spawned as a collision shape on the EE link, not as a separate
+    held_asset articulation. Therefore, held_asset event terms must be disabled.
     """
-    # Disable mass randomization — peg mass is fixed
+    # Disable held_asset events — peg is part of robot, not a separate asset
     object_scale_mass = None
+    held_physics_material = None
 
 
 # ---------------------------------------------------------------------------
