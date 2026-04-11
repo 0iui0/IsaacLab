@@ -124,60 +124,36 @@ class ForgeEnv(DirectRLEnv):
     def _make_peg_articulation_cfg(self):
         """Create an ArticulationCfg for the fixed peg as a standalone rigid body.
 
-        The peg is spawned as a cylinder with collision and its own physics.
-        Its pose is updated every frame to track the robot's EE link.
+        Uses the factory peg USD (which has ArticulationRootAPI) so Isaac Lab
+        can resolve it as a proper Articulation. The peg pose is updated every
+        frame to track the robot's EE link.
         """
-        peg_radius = self.profile.peg_radius
-        peg_height = self.profile.peg_height
-        peg_mat = self.profile.peg_material or (1.0, 1.0, 0.0)
+        peg_usd_path = self.profile.peg_usd_path
+        if peg_usd_path is None:
+            raise ValueError(
+                "Fixed-peg robots require peg_usd_path in RobotProfile "
+                "(needs USD with ArticulationRootAPI for contact force reporting)"
+            )
 
         peg_prim_path = "/World/envs/env_.*/PegAsset"
-        peg_usd_path = self.profile.peg_usd_path
 
-        if peg_usd_path is not None:
-            # Use a pre-made USD if available
-            spawn_cfg = sim_utils.UsdFileCfg(
-                usd_path=peg_usd_path,
-                activate_contact_sensors=True,
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                    disable_gravity=True,
-                    max_depenetration_velocity=5.0,
-                    linear_damping=0.0,
-                    angular_damping=0.0,
-                    max_linear_velocity=1000.0,
-                    max_angular_velocity=3666.0,
-                    enable_gyroscopic_forces=True,
-                    solver_position_iteration_count=192,
-                    solver_velocity_iteration_count=1,
-                    max_contact_impulse=1e32,
-                ),
-                collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
-            )
-        else:
-            # Spawn a cylinder dynamically
-            spawn_cfg = sim_utils.CylinderCfg(
-                radius=peg_radius,
-                height=peg_height,
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                    disable_gravity=True,
-                    max_depenetration_velocity=5.0,
-                    linear_damping=0.0,
-                    angular_damping=0.0,
-                    max_linear_velocity=1000.0,
-                    max_angular_velocity=3666.0,
-                    enable_gyroscopic_forces=True,
-                    solver_position_iteration_count=192,
-                    solver_velocity_iteration_count=1,
-                    max_contact_impulse=1e32,
-                ),
-                collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
-                physics_material=sim_utils.RigidBodyMaterialCfg(
-                    static_friction=peg_mat[0],
-                    dynamic_friction=peg_mat[1],
-                    restitution=peg_mat[2],
-                ),
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.4, 0.2)),
-            )
+        spawn_cfg = sim_utils.UsdFileCfg(
+            usd_path=peg_usd_path,
+            activate_contact_sensors=True,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=True,
+                max_depenetration_velocity=5.0,
+                linear_damping=0.0,
+                angular_damping=0.0,
+                max_linear_velocity=1000.0,
+                max_angular_velocity=3666.0,
+                enable_gyroscopic_forces=True,
+                solver_position_iteration_count=192,
+                solver_velocity_iteration_count=1,
+                max_contact_impulse=1e32,
+            ),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+        )
 
         return ArticulationCfg(
             prim_path=peg_prim_path,

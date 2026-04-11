@@ -10,6 +10,8 @@ from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 from .base import RobotProfile
 
+ASSET_DIR = f"{ISAACLAB_NUCLEUS_DIR}/Factory"
+
 UR10_FORGE_PROFILE = RobotProfile(
     # --- Robot ArticulationCfg ---
     robot=ArticulationCfg(
@@ -83,4 +85,7 @@ UR10_FORGE_PROFILE = RobotProfile(
     peg_radius=0.004,  # 8mm diameter peg (fits 8.1mm hole with clearance)
     peg_height=0.050,  # 50mm peg height (matches Franka peg)
     peg_material=(1.0, 1.0, 0.0),  # (static_friction, dynamic_friction, restitution)
+    # USD with ArticulationRootAPI — required for contact force reporting.
+    # Uses the same factory peg as Franka's held asset.
+    peg_usd_path=f"{ASSET_DIR}/factory_peg_8mm.usd",
 )
