@@ -302,40 +302,15 @@ class FrankaForgeTaskNutThreadCfg(ForgeTaskNutThreadCfg):
 
 
 @configclass
-class EventCfgFixedPeg:
+class EventCfgFixedPeg(EventCfg):
     """Event configuration for fixed-peg robots (UR10/CR5).
 
     Excludes events related to held_asset since these robots have a fixed peg.
+    The held_asset events are set to None to disable them.
     """
-    fixed_physics_material = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("fixed_asset"),
-            "static_friction_range": (0.25, 1.25),
-            "dynamic_friction_range": (0.25, 0.25),
-            "restitution_range": (0.0, 0.0),
-            "num_buckets": 128,
-        },
-    )
-
-    robot_physics_material = EventTerm(
-        func=mdp.randomize_rigid_body_material,
-        mode="startup",
-        params={
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.75, 0.75),
-            "dynamic_friction_range": (0.75, 0.75),
-            "restitution_range": (0.0, 0.0),
-            "num_buckets": 1,
-        },
-    )
-
-    dead_zone_thresholds = EventTerm(
-        func=randomize_dead_zone,
-        mode="interval",
-        interval_range_s=(2.0, 2.0),
-    )
+    # Disable held_asset events by setting to None
+    object_scale_mass = None
+    held_physics_material = None
 
 
 # ---------------------------------------------------------------------------
@@ -353,9 +328,10 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     events: EventCfgFixedPeg = EventCfgFixedPeg()
 
     # UR10 has 6 arm joints, so reset_joints and default_dof_pos_tensor must have 6 values
+    # These override the 7-element Franka defaults from CtrlCfg
     ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
-        reset_joints=[0.0, -1.571, 1.571, -1.571, -1.571, 0.0],  # UR10 home position
-        default_dof_pos_tensor=[0.0, -1.571, 1.571, 0.0, -1.571, 0.0],  # UR10 null-space position
+        reset_joints=[0.0, -1.712, 1.712, -1.571, -1.571, 0.0],  # UR10 home position
+        default_dof_pos_tensor=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],  # UR10 null-space position
     )
 
 
@@ -374,6 +350,7 @@ class CR5ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     events: EventCfgFixedPeg = EventCfgFixedPeg()
 
     # CR5 has 6 arm joints, so reset_joints and default_dof_pos_tensor must have 6 values
+    # These override the 7-element Franka defaults from CtrlCfg
     ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
         reset_joints=[0.0, -1.571, 1.571, 0.0, 0.0, 0.0],  # CR5 home position
         default_dof_pos_tensor=[0.0, -1.571, 1.571, 0.0, 0.0, 0.0],  # CR5 null-space position
