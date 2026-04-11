@@ -297,6 +297,48 @@ class FrankaForgeTaskNutThreadCfg(ForgeTaskNutThreadCfg):
 
 
 # ---------------------------------------------------------------------------
+# Event config for fixed-peg robots (no held_asset events)
+# ---------------------------------------------------------------------------
+
+
+@configclass
+class EventCfgFixedPeg:
+    """Event configuration for fixed-peg robots (UR10/CR5).
+
+    Excludes events related to held_asset since these robots have a fixed peg.
+    """
+    fixed_physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("fixed_asset"),
+            "static_friction_range": (0.25, 1.25),
+            "dynamic_friction_range": (0.25, 0.25),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 128,
+        },
+    )
+
+    robot_physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "static_friction_range": (0.75, 0.75),
+            "dynamic_friction_range": (0.75, 0.75),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 1,
+        },
+    )
+
+    dead_zone_thresholds = EventTerm(
+        func=randomize_dead_zone,
+        mode="interval",
+        interval_range_s=(2.0, 2.0),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Robot-specific config variants: UR10
 # ---------------------------------------------------------------------------
 
@@ -305,40 +347,10 @@ class FrankaForgeTaskNutThreadCfg(ForgeTaskNutThreadCfg):
 class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     """UR10 configuration for peg insertion with fixed peg.
 
-    Note: Events related to held_asset are excluded since UR10 uses a fixed peg.
+    Note: Uses EventCfgFixedPeg to exclude held_asset events.
     """
     robot_profile: RobotProfile = UR10_FORGE_PROFILE
-
-    # Override events to exclude held_asset terms (fixed peg has no held asset)
-    events: EventCfg = EventCfg(
-        fixed_physics_material=EventTerm(
-            func=mdp.randomize_rigid_body_material,
-            mode="startup",
-            params={
-                "asset_cfg": SceneEntityCfg("fixed_asset"),
-                "static_friction_range": (0.25, 1.25),
-                "dynamic_friction_range": (0.25, 0.25),
-                "restitution_range": (0.0, 0.0),
-                "num_buckets": 128,
-            },
-        ),
-        robot_physics_material=EventTerm(
-            func=mdp.randomize_rigid_body_material,
-            mode="startup",
-            params={
-                "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-                "static_friction_range": (0.75, 0.75),
-                "dynamic_friction_range": (0.75, 0.75),
-                "restitution_range": (0.0, 0.0),
-                "num_buckets": 1,
-            },
-        ),
-        dead_zone_thresholds=EventTerm(
-            func=randomize_dead_zone,
-            mode="interval",
-            interval_range_s=(2.0, 2.0),
-        ),
-    )
+    events: EventCfgFixedPeg = EventCfgFixedPeg()
 
 
 # ---------------------------------------------------------------------------
@@ -350,37 +362,7 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
 class CR5ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     """CR5 configuration for peg insertion with fixed peg.
 
-    Note: Events related to held_asset are excluded since CR5 uses a fixed peg.
+    Note: Uses EventCfgFixedPeg to exclude held_asset events.
     """
     robot_profile: RobotProfile = CR5_FORGE_PROFILE
-
-    # Override events to exclude held_asset terms (fixed peg has no held asset)
-    events: EventCfg = EventCfg(
-        fixed_physics_material=EventTerm(
-            func=mdp.randomize_rigid_body_material,
-            mode="startup",
-            params={
-                "asset_cfg": SceneEntityCfg("fixed_asset"),
-                "static_friction_range": (0.25, 1.25),
-                "dynamic_friction_range": (0.25, 0.25),
-                "restitution_range": (0.0, 0.0),
-                "num_buckets": 128,
-            },
-        ),
-        robot_physics_material=EventTerm(
-            func=mdp.randomize_rigid_body_material,
-            mode="startup",
-            params={
-                "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-                "static_friction_range": (0.75, 0.75),
-                "dynamic_friction_range": (0.75, 0.75),
-                "restitution_range": (0.0, 0.0),
-                "num_buckets": 1,
-            },
-        ),
-        dead_zone_thresholds=EventTerm(
-            func=randomize_dead_zone,
-            mode="interval",
-            interval_range_s=(2.0, 2.0),
-        ),
-    )
+    events: EventCfgFixedPeg = EventCfgFixedPeg()
