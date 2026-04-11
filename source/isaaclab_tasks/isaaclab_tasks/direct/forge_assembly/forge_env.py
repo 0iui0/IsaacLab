@@ -92,20 +92,19 @@ class ForgeEnv(DirectRLEnv):
         self._robot = Articulation(self.profile.robot)
         self._fixed_asset = Articulation(self.cfg_task.fixed_asset)
 
-        # For fixed-peg robots, there is no separate held asset — the peg is part of the robot.
+        # For fixed-peg robots, spawn the peg as a separate Articulation (held_asset)
+        # so that contact forces are properly reported through its physics simulation.
+        # The peg pose is updated every frame to track the EE link.
         if self.profile.grasp_type == "gripper":
             self._held_asset = Articulation(self.cfg_task.held_asset)
+        elif self.profile.grasp_type == "fixed_peg" and self.profile.peg_offset_from_ee is not None:
+            self._held_asset = Articulation(self._make_peg_articulation_cfg())
         else:
             self._held_asset = None
 
         if self.cfg_task.name == "gear_mesh":
             self._small_gear_asset = Articulation(self.cfg_task.small_gear_cfg)
             self._large_gear_asset = Articulation(self.cfg_task.large_gear_cfg)
-
-        # For fixed-peg robots, spawn peg + force sensor as rigid bodies attached to EE link
-        # This must happen BEFORE clone_environments so the peg gets cloned with the environment
-        if self.profile.grasp_type == "fixed_peg" and self.profile.peg_offset_from_ee is not None:
-            self._spawn_fixed_peg_assets()
 
         self.scene.clone_environments(copy_from_source=False)
         if self.device == "cpu":
@@ -122,62 +121,71 @@ class ForgeEnv(DirectRLEnv):
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
-    def _spawn_fixed_peg_assets(self):
-        """Spawn peg and force sensor as rigid bodies attached to EE link for fixed-peg robots.
+    def _make_peg_articulation_cfg(self):
+        """Create an ArticulationCfg for the fixed peg as a standalone rigid body.
 
-        The peg is spawned as a cylinder rigid body, and the force sensor is spawned
-        as a rigid body between the EE link and the peg.
+        The peg is spawned as a cylinder with collision and its own physics.
+        Its pose is updated every frame to track the robot's EE link.
         """
-        peg_offset = self.profile.peg_offset_from_ee
         peg_radius = self.profile.peg_radius
         peg_height = self.profile.peg_height
         peg_mat = self.profile.peg_material or (1.0, 1.0, 0.0)
 
-        # Spawn force sensor as a collision prim (not rigid body) at EE link + offset
-        # Note: We don't use RigidBodyProperties because the parent (EE link) is already
-        # part of the robot articulation. Multiple rigid bodies in a hierarchy cause
-        # PhysX warnings and unpredictable simulation behavior.
-        force_sensor_prim_path = "/World/envs/env_.*/Robot/.*{}/force_sensor".format(self.profile.ee_body_name)
-        force_sensor_cfg = sim_utils.CylinderCfg(
-            radius=0.02,
-            height=0.01,
-            # No rigid_props - parent EE link handles the physics
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
-            physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=1.0,
-                dynamic_friction=1.0,
-                restitution=0.0,
-            ),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.8, 0.8)),
-        )
-        force_sensor_cfg.func(
-            force_sensor_prim_path,
-            force_sensor_cfg,
-            translation=(peg_offset[0], peg_offset[1], peg_offset[2] - peg_height * 0.5 - 0.005),
-            orientation=(1.0, 0.0, 0.0, 0.0),
-        )
+        peg_prim_path = "/World/envs/env_.*/PegAsset"
+        peg_usd_path = self.profile.peg_usd_path
 
-        # Spawn peg as a collision prim (not rigid body) attached to EE link
-        # The peg inherits motion from the parent EE link through the USD hierarchy.
-        # Collision is handled by the peg's own CollisionAPI.
-        peg_prim_path = "/World/envs/env_.*/Robot/.*{}/peg".format(self.profile.ee_body_name)
-        peg_cfg = sim_utils.CylinderCfg(
-            radius=peg_radius,
-            height=peg_height,
-            # No rigid_props - parent EE link handles the physics
-            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
-            physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=peg_mat[0],
-                dynamic_friction=peg_mat[1],
-                restitution=peg_mat[2],
+        if peg_usd_path is not None:
+            # Use a pre-made USD if available
+            spawn_cfg = sim_utils.UsdFileCfg(
+                usd_path=peg_usd_path,
+                activate_contact_sensors=True,
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                    disable_gravity=True,
+                    max_depenetration_velocity=5.0,
+                    linear_damping=0.0,
+                    angular_damping=0.0,
+                    max_linear_velocity=1000.0,
+                    max_angular_velocity=3666.0,
+                    enable_gyroscopic_forces=True,
+                    solver_position_iteration_count=192,
+                    solver_velocity_iteration_count=1,
+                    max_contact_impulse=1e32,
+                ),
+                collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+            )
+        else:
+            # Spawn a cylinder dynamically
+            spawn_cfg = sim_utils.CylinderCfg(
+                radius=peg_radius,
+                height=peg_height,
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                    disable_gravity=True,
+                    max_depenetration_velocity=5.0,
+                    linear_damping=0.0,
+                    angular_damping=0.0,
+                    max_linear_velocity=1000.0,
+                    max_angular_velocity=3666.0,
+                    enable_gyroscopic_forces=True,
+                    solver_position_iteration_count=192,
+                    solver_velocity_iteration_count=1,
+                    max_contact_impulse=1e32,
+                ),
+                collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+                physics_material=sim_utils.RigidBodyMaterialCfg(
+                    static_friction=peg_mat[0],
+                    dynamic_friction=peg_mat[1],
+                    restitution=peg_mat[2],
+                ),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.4, 0.2)),
+            )
+
+        return ArticulationCfg(
+            prim_path=peg_prim_path,
+            spawn=spawn_cfg,
+            init_state=ArticulationCfg.InitialStateCfg(
+                pos=(0.0, 0.0, 0.1), rot=(1.0, 0.0, 0.0, 0.0), joint_pos={}, joint_vel={}
             ),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.4, 0.2)),
-        )
-        peg_cfg.func(
-            peg_prim_path,
-            peg_cfg,
-            translation=(peg_offset[0], peg_offset[1], peg_offset[2]),
-            orientation=(1.0, 0.0, 0.0, 0.0),
+            actuators={},
         )
 
     # -----------------------------------------------------------------------
@@ -206,10 +214,11 @@ class ForgeEnv(DirectRLEnv):
             self.left_finger_body_idx = self._robot.body_names.index(self.profile.left_finger_body_name)
             self.right_finger_body_idx = self._robot.body_names.index(self.profile.right_finger_body_name)
 
-        # Force sensor body index - for fixed-peg robots, use EE body index since the
-        # dynamically spawned force sensor is not part of the articulation
+        # Force sensor body index - for fixed-peg robots, contact forces come from
+        # the held_asset (peg articulation) via get_net_contact_forces(), not from
+        # the robot articulation's joint forces.
         if self.profile.grasp_type == "fixed_peg":
-            self.force_sensor_body_idx = self.ee_body_idx
+            self.force_sensor_body_idx = None  # Uses held_asset contact forces instead
         elif self.profile.force_sensor_body_name is not None:
             self.force_sensor_body_idx = self._robot.body_names.index(self.profile.force_sensor_body_name)
         else:
@@ -235,28 +244,38 @@ class ForgeEnv(DirectRLEnv):
         self.fixed_pos = self._fixed_asset.data.root_pos_w - self.scene.env_origins
         self.fixed_quat = self._fixed_asset.data.root_quat_w
 
-        if self._held_asset is not None:
-            self.held_pos = self._held_asset.data.root_pos_w - self.scene.env_origins
-            self.held_quat = self._held_asset.data.root_quat_w
-        else:
-            # Fixed-peg: compute peg center position from EE pose.
-            # The peg is attached at peg_offset_from_ee in the EE link's local frame,
-            # so we transform the offset by the EE quaternion to get the world-frame peg center.
-            ee_pos = self._robot.data.body_pos_w[:, self.ee_body_idx] - self.scene.env_origins
-            ee_quat = self._robot.data.body_quat_w[:, self.ee_body_idx]
-            peg_offset = torch.tensor(self.profile.peg_offset_from_ee, device=self.device).unsqueeze(0).expand(
-                self.num_envs, -1
-            )
-            identity_quat = (
-                torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).expand(self.num_envs, -1)
-            )
-            _, self.held_pos = torch_utils.tf_combine(ee_quat, ee_pos, identity_quat, peg_offset)
-            self.held_quat = ee_quat
-
         self.ee_pos = self._robot.data.body_pos_w[:, self.ee_body_idx] - self.scene.env_origins
         self.ee_quat = self._robot.data.body_quat_w[:, self.ee_body_idx]
         self.ee_linvel = self._robot.data.body_lin_vel_w[:, self.ee_body_idx]
         self.ee_angvel = self._robot.data.body_ang_vel_w[:, self.ee_body_idx]
+
+        if self._held_asset is not None:
+            if self.profile.grasp_type == "fixed_peg":
+                # Fixed-peg: teleport peg to track EE pose every frame.
+                # This ensures the peg is always at peg_offset_from_ee from the EE link.
+                ee_pos_w = self._robot.data.body_pos_w[:, self.ee_body_idx]
+                ee_quat_w = self._robot.data.body_quat_w[:, self.ee_body_idx]
+                peg_offset = torch.tensor(self.profile.peg_offset_from_ee, device=self.device).unsqueeze(0).expand(
+                    self.num_envs, -1
+                )
+                identity_quat = (
+                    torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).expand(self.num_envs, -1)
+                )
+                _, peg_pos_w = torch_utils.tf_combine(ee_quat_w, ee_pos_w, identity_quat, peg_offset)
+
+                # Write peg pose to simulation (position + quaternion).
+                peg_root_state = torch.zeros((self.num_envs, 13), device=self.device)
+                peg_root_state[:, 0:3] = peg_pos_w
+                peg_root_state[:, 3:7] = ee_quat_w
+                self._held_asset.write_root_pose_to_sim(peg_root_state[:, 0:7])
+                self._held_asset.write_root_velocity_to_sim(peg_root_state[:, 7:])
+
+            self.held_pos = self._held_asset.data.root_pos_w - self.scene.env_origins
+            self.held_quat = self._held_asset.data.root_quat_w
+        else:
+            # Should not reach here — held_asset is always created for valid configs.
+            self.held_pos = self.ee_pos.clone()
+            self.held_quat = self.ee_quat.clone()
 
         jacobians = self._robot.root_physx_view.get_jacobians()
         mass_matrices = self._robot.root_physx_view.get_generalized_mass_matrices()
@@ -326,7 +345,30 @@ class ForgeEnv(DirectRLEnv):
         self.prev_ee_quat = self.noisy_ee_quat.clone()
 
         # Force sensing.
-        if self.force_sensor_body_idx is not None:
+        if self.profile.grasp_type == "fixed_peg" and self._held_asset is not None:
+            # Fixed-peg: use net contact forces on the held_asset (peg articulation).
+            # The peg is a separate rigid body, so its contact forces are directly available.
+            net_forces = self._held_asset.root_physx_view.get_net_contact_forces()
+            self.force_sensor_world = torch.zeros((self.num_envs, 6), device=self.device)
+            self.force_sensor_world[:, 0:3] = net_forces
+            alpha = self.cfg.ft_smoothing_factor
+            self.force_sensor_world_smooth = alpha * self.force_sensor_world + (1 - alpha) * self.force_sensor_world_smooth
+
+            self.force_sensor_smooth = torch.zeros_like(self.force_sensor_world)
+            identity_quat = (
+                torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
+            )
+            self.force_sensor_smooth[:, :3], self.force_sensor_smooth[:, 3:6] = forge_utils.change_FT_frame(
+                self.force_sensor_world_smooth[:, 0:3],
+                self.force_sensor_world_smooth[:, 3:6],
+                (identity_quat, torch.zeros((self.num_envs, 3), device=self.device)),
+                (identity_quat, self.fixed_pos_obs_frame + self.init_fixed_pos_obs_noise),
+            )
+
+            force_noise = torch.randn((self.num_envs, 3), dtype=torch.float32, device=self.device)
+            force_noise *= self.cfg.obs_rand.ft_force
+            self.noisy_force = self.force_sensor_smooth[:, 0:3] + force_noise
+        elif self.force_sensor_body_idx is not None:
             self.force_sensor_world = self._robot.root_physx_view.get_link_incoming_joint_force()[
                 :, self.force_sensor_body_idx
             ]
@@ -376,7 +418,7 @@ class ForgeEnv(DirectRLEnv):
         state_dict.update(
             {
                 "ema_factor": self.ema_factor,
-                "ft_force": self.force_sensor_smooth[:, 0:3] if self.force_sensor_body_idx is not None else torch.zeros((self.num_envs, 3), device=self.device),
+                "ft_force": self.force_sensor_smooth[:, 0:3] if (self.force_sensor_body_idx is not None or self.profile.grasp_type == "fixed_peg") else torch.zeros((self.num_envs, 3), device=self.device),
                 "force_threshold": self.contact_penalty_thresholds[:, None],
                 "prev_actions": prev_actions,
             }
@@ -576,7 +618,7 @@ class ForgeEnv(DirectRLEnv):
         pos_error = torch.norm(self.delta_pos, p=2, dim=-1) / self.cfg.ctrl.pos_action_threshold[0]
         rot_error = torch.abs(self.delta_yaw) / self.cfg.ctrl.rot_action_threshold[0]
 
-        if self.force_sensor_body_idx is not None:
+        if self.force_sensor_body_idx is not None or self.profile.grasp_type == "fixed_peg":
             contact_force = torch.norm(self.force_sensor_smooth[:, 0:3], p=2, dim=-1, keepdim=False)
         else:
             contact_force = torch.zeros(self.num_envs, device=self.device)

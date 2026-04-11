@@ -305,12 +305,10 @@ class FrankaForgeTaskNutThreadCfg(ForgeTaskNutThreadCfg):
 class EventCfgFixedPeg(EventCfg):
     """Event configuration for fixed-peg robots (UR10/CR5).
 
-    Excludes events related to held_asset since these robots have a fixed peg.
-    The held_asset events are set to None to disable them.
+    The peg is a separate articulation (held_asset) but has fixed mass.
     """
-    # Disable held_asset events by setting to None
+    # Disable mass randomization — peg mass is fixed
     object_scale_mass = None
-    held_physics_material = None
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +342,10 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
         hand_init_pos=[0.0, 0.0, 0.067],
         hand_init_pos_noise=[0.01, 0.01, 0.005],
         fixed_asset_init_pos_noise=[0.03, 0.03, 0.01],
+        # Lower contact threshold: UR10 peg is a collision-only prim (no mass),
+        # so contact forces are smaller than Franka's held asset (19g mass).
+        contact_penalty_threshold_range=[1.0, 3.0],
+        contact_penalty_scale=0.2,
         fixed_asset=_make_fixed_asset_cfg(
             "/World/envs/env_.*/FixedAsset",
             f"{ASSET_DIR}/factory_hole_8mm.usd",

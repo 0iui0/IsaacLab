@@ -74,3 +74,6 @@ class RobotProfile:
 
     peg_material: tuple = None
     """(static_friction, dynamic_friction, restitution) for peg. Only used for fixed_peg robots."""
+
+    peg_usd_path: str | None = None
+    """Optional USD path for a pre-made peg asset. If None, a cylinder is spawned dynamically."""
