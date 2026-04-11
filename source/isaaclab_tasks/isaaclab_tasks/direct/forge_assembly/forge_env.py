@@ -133,18 +133,21 @@ class ForgeEnv(DirectRLEnv):
         peg_height = self.profile.peg_height
         peg_mat = self.profile.peg_material or (1.0, 1.0, 0.0)
 
-        # Spawn force sensor as a rigid body at EE link + offset
+        # Spawn force sensor as a collision prim (not rigid body) at EE link + offset
+        # Note: We don't use RigidBodyProperties because the parent (EE link) is already
+        # part of the robot articulation. Multiple rigid bodies in a hierarchy cause
+        # PhysX warnings and unpredictable simulation behavior.
         force_sensor_prim_path = "/World/envs/env_.*/Robot/.*{}/force_sensor".format(self.profile.ee_body_name)
         force_sensor_cfg = sim_utils.CylinderCfg(
             radius=0.02,
             height=0.01,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                disable_gravity=True,
-                linear_damping=0.0,
-                angular_damping=0.0,
-            ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.01),  # Negligible mass for force sensor
+            # No rigid_props - parent EE link handles the physics
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=1.0,
+                dynamic_friction=1.0,
+                restitution=0.0,
+            ),
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.8, 0.8)),
         )
         force_sensor_cfg.func(
@@ -154,21 +157,14 @@ class ForgeEnv(DirectRLEnv):
             orientation=(1.0, 0.0, 0.0, 0.0),
         )
 
-        # Spawn peg as a rigid body (cylinder) attached to EE link
+        # Spawn peg as a collision prim (not rigid body) attached to EE link
+        # The peg inherits motion from the parent EE link through the USD hierarchy.
+        # Collision is handled by the peg's own CollisionAPI.
         peg_prim_path = "/World/envs/env_.*/Robot/.*{}/peg".format(self.profile.ee_body_name)
         peg_cfg = sim_utils.CylinderCfg(
             radius=peg_radius,
             height=peg_height,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                disable_gravity=True,
-                linear_damping=0.0,
-                angular_damping=0.0,
-                max_linear_velocity=1000.0,
-                max_angular_velocity=3666.0,
-                solver_position_iteration_count=192,
-                solver_velocity_iteration_count=1,
-            ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.05),  # Light peg mass
+            # No rigid_props - parent EE link handles the physics
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 static_friction=peg_mat[0],
@@ -243,9 +239,19 @@ class ForgeEnv(DirectRLEnv):
             self.held_pos = self._held_asset.data.root_pos_w - self.scene.env_origins
             self.held_quat = self._held_asset.data.root_quat_w
         else:
-            # Fixed-peg: held asset position IS the EE position (peg tip).
-            self.held_pos = self._robot.data.body_pos_w[:, self.ee_body_idx] - self.scene.env_origins
-            self.held_quat = self._robot.data.body_quat_w[:, self.ee_body_idx]
+            # Fixed-peg: compute peg center position from EE pose.
+            # The peg is attached at peg_offset_from_ee in the EE link's local frame,
+            # so we transform the offset by the EE quaternion to get the world-frame peg center.
+            ee_pos = self._robot.data.body_pos_w[:, self.ee_body_idx] - self.scene.env_origins
+            ee_quat = self._robot.data.body_quat_w[:, self.ee_body_idx]
+            peg_offset = torch.tensor(self.profile.peg_offset_from_ee, device=self.device).unsqueeze(0).expand(
+                self.num_envs, -1
+            )
+            identity_quat = (
+                torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).expand(self.num_envs, -1)
+            )
+            _, self.held_pos = torch_utils.tf_combine(ee_quat, ee_pos, identity_quat, peg_offset)
+            self.held_quat = ee_quat
 
         self.ee_pos = self._robot.data.body_pos_w[:, self.ee_body_idx] - self.scene.env_origins
         self.ee_quat = self._robot.data.body_quat_w[:, self.ee_body_idx]
@@ -877,9 +883,9 @@ class ForgeEnv(DirectRLEnv):
     def get_handheld_asset_relative_pose(self):
         """Get default relative pose between held asset and EE."""
         if self.profile.grasp_type == "fixed_peg":
-            # Peg is rigidly attached; relative pose is just the peg geometry offset from profile.
+            # Peg is rigidly attached; relative pose is the peg offset from EE link.
             held_asset_relative_pos = torch.zeros((self.num_envs, 3), device=self.device)
-            held_asset_relative_pos[:, 2] = self.profile.peg_height
+            held_asset_relative_pos[:, 2] = self.profile.peg_offset_from_ee[2]
             held_asset_relative_quat = (
                 torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
             )
@@ -971,9 +977,10 @@ class ForgeEnv(DirectRLEnv):
         # (2) Move EE to randomized location above fixed asset.
         bad_envs = env_ids.clone()
         ik_attempt = 0
+        max_ik_attempts = 10
         hand_down_quat = torch.zeros((self.num_envs, 4), dtype=torch.float32, device=self.device)
 
-        while True:
+        while bad_envs.shape[0] > 0 and ik_attempt < max_ik_attempts:
             n_bad = bad_envs.shape[0]
 
             above_fixed_pos = fixed_tip_pos.clone()

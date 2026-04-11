@@ -188,7 +188,9 @@ def _make_asset_cfg(prim_path: str, usd_path: str, mass: float, disable_gravity:
     )
 
 
-def _make_fixed_asset_cfg(prim_path: str, usd_path: str, mass: float) -> ArticulationCfg:
+def _make_fixed_asset_cfg(
+    prim_path: str, usd_path: str, mass: float, pos: tuple = (0.6, 0.0, 0.05)
+) -> ArticulationCfg:
     return ArticulationCfg(
         prim_path=prim_path,
         spawn=sim_utils.UsdFileCfg(
@@ -210,7 +212,7 @@ def _make_fixed_asset_cfg(prim_path: str, usd_path: str, mass: float) -> Articul
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
         ),
         init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.6, 0.0, 0.05), rot=(1.0, 0.0, 0.0, 0.0), joint_pos={}, joint_vel={}
+            pos=pos, rot=(1.0, 0.0, 0.0, 0.0), joint_pos={}, joint_vel={}
         ),
         actuators={},
     )

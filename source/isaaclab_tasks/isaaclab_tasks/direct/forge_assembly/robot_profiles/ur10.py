@@ -39,10 +39,10 @@ UR10_FORGE_PROFILE = RobotProfile(
         init_state=ArticulationCfg.InitialStateCfg(
             joint_pos={
                 "shoulder_pan_joint": 0.0,
-                "shoulder_lift_joint": -1.712,
-                "elbow_joint": 1.712,
-                "wrist_1_joint": 0.0,
-                "wrist_2_joint": -1.571,
+                "shoulder_lift_joint": -0.5,
+                "elbow_joint": -0.5,
+                "wrist_1_joint": -0.5,
+                "wrist_2_joint": 0.0,
                 "wrist_3_joint": 0.0,
             },
             pos=(0.0, 0.0, 0.0),
@@ -72,15 +72,15 @@ UR10_FORGE_PROFILE = RobotProfile(
     force_sensor_body_name="force_sensor",  # Dynamically created
     # --- IK / control ---
     default_arm_joint_pos=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
-    reset_arm_joint_pos=[0.0, -1.712, 1.712, -1.571, -1.571, 0.0],
+    reset_arm_joint_pos=[0.0, -0.5, -0.5, -0.5, 0.0, 0.0],
     null_space_default_pos=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
     # --- End-effector geometry ---
     fingerpad_length=0.0,
     # --- Grasp type ---
     grasp_type="fixed_peg",
     # --- Fixed peg configuration ---
-    peg_offset_from_ee=[0.0, 0.0, 0.15],  # Peg extends 15cm from EE link
-    peg_radius=0.0125,  # 25mm diameter peg
-    peg_height=0.0625,  # 62.5mm peg height
+    peg_offset_from_ee=[0.0, 0.0, 0.04],  # Peg center 4cm from EE link along approach axis
+    peg_radius=0.004,  # 8mm diameter peg (fits 8.1mm hole with clearance)
+    peg_height=0.050,  # 50mm peg height (matches Franka peg)
     peg_material=(1.0, 1.0, 0.0),  # (static_friction, dynamic_friction, restitution)
 )

@@ -14,7 +14,7 @@ from isaaclab.sim.spawners.materials.physics_materials_cfg import RigidBodyMater
 from isaaclab.utils import configclass
 
 from .forge_events import randomize_dead_zone
-from .forge_tasks_cfg import ForgeGearMesh, ForgeNutThread, ForgePegInsert, ForgeTask
+from .forge_tasks_cfg import ASSET_DIR, ForgeGearMesh, ForgeNutThread, ForgePegInsert, ForgeTask, _make_fixed_asset_cfg
 from .robot_profiles import CR5_FORGE_PROFILE, FRANKA_FORGE_PROFILE, UR10_FORGE_PROFILE, RobotProfile
 
 # ---------------------------------------------------------------------------
@@ -322,16 +322,30 @@ class EventCfgFixedPeg(EventCfg):
 class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     """UR10 configuration for peg insertion with fixed peg.
 
-    Note: Uses EventCfgFixedPeg to exclude held_asset events.
+    UR10 has a shorter effective reach than Franka and is 6-DOF (no redundancy).
+    The fixed_asset (hole) is placed closer to the robot base, and the reset pose
+    is more forward-reaching to improve IK convergence.
     """
     robot_profile: RobotProfile = UR10_FORGE_PROFILE
     events: EventCfgFixedPeg = EventCfgFixedPeg()
 
     # UR10 has 6 arm joints, so reset_joints and default_dof_pos_tensor must have 6 values
-    # These override the 7-element Franka defaults from CtrlCfg
     ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
-        reset_joints=[0.0, -1.712, 1.712, -1.571, -1.571, 0.0],  # UR10 home position
-        default_dof_pos_tensor=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],  # UR10 null-space position
+        reset_joints=[0.0, -0.5, -0.5, -0.5, 0.0, 0.0],
+        default_dof_pos_tensor=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
+    )
+
+    # UR10-specific task overrides: closer fixed_asset, tighter workspace
+    task = ForgePegInsert(
+        hand_init_pos=[0.0, 0.0, 0.08],
+        hand_init_pos_noise=[0.01, 0.01, 0.005],
+        fixed_asset_init_pos_noise=[0.03, 0.03, 0.01],
+        fixed_asset=_make_fixed_asset_cfg(
+            "/World/envs/env_.*/FixedAsset",
+            f"{ASSET_DIR}/factory_hole_8mm.usd",
+            0.05,
+            pos=(0.45, 0.0, 0.05),
+        ),
     )
 
 
