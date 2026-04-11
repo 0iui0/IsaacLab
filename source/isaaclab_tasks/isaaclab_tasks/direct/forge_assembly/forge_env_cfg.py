@@ -338,12 +338,11 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     # UR10-specific task overrides: closer fixed_asset, tighter workspace
     task = ForgePegInsert(
         # hand_init_orn: [roll, pitch, yaw] in radians.
-        # ee_link Y-axis points out of flange. At zero pose, Y-axis is horizontal.
-        # To make Y-axis point down (-Z), rotate +90° around X (roll=π/2).
-        # If peg still horizontal, try different combinations.
+        # ee_link orientation at zero pose determines which rotation makes peg vertical.
+        # Using roll=180° + yaw=90° to make peg point downward toward hole.
         hand_init_pos=[0.0, 0.0, 0.067],
         hand_init_pos_noise=[0.01, 0.01, 0.005],
-        hand_init_orn=[1.571, 0.0, 3.1416],  # roll=90° + yaw=180°: Y-axis down, X-axis flipped
+        hand_init_orn=[3.1416, 0.0, 1.571],  # roll=180° + yaw=90°: makes peg vertical
         hand_init_orn_noise=[0.0, 0.0, 0.785],
         fixed_asset_init_pos_noise=[0.03, 0.03, 0.01],
         # Lower contact threshold: UR10 peg is a collision-only prim (no mass),

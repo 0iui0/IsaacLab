@@ -162,7 +162,7 @@ class ForgeEnv(DirectRLEnv):
         peg_cfg = sim_utils.CylinderCfg(
             radius=peg_radius,
             height=peg_height,
-            axis="Y",  # UR10 ee_link: Y-axis points along approach direction (out of flange)
+            axis="X",  # UR10 ee_link: X-axis points along approach direction (out of flange)
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 static_friction=peg_mat[0],
