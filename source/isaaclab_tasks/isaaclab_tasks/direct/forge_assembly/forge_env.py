@@ -152,6 +152,7 @@ class ForgeEnv(DirectRLEnv):
         peg_cfg = sim_utils.CylinderCfg(
             radius=peg_radius,
             height=peg_height,
+            axis="X",  # UR10 ee_link: X-axis points along approach direction (out of flange)
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 static_friction=peg_mat[0],
@@ -164,9 +165,7 @@ class ForgeEnv(DirectRLEnv):
             peg_prim_path,
             peg_cfg,
             translation=(peg_offset[0], peg_offset[1], peg_offset[2]),
-            # Default cylinder extends along Z-axis. Use identity quaternion to keep peg
-            # aligned with ee_link's Z-axis (approach direction), making them coaxial.
-            orientation=(1.0, 0.0, 0.0, 0.0),  # Identity - cylinder along Z
+            orientation=(1.0, 0.0, 0.0, 0.0),  # Identity - X-axis aligns with ee_link X (approach)
         )
 
     # -----------------------------------------------------------------------
