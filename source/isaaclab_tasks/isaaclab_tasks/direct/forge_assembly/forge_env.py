@@ -142,11 +142,21 @@ class ForgeEnv(DirectRLEnv):
         the collision shape is part of the EE link's rigid body when PhysX
         initializes the articulation. This ensures contact forces on the peg
         are reported through get_link_incoming_joint_force() on the ee_body_idx.
+
+        Note: Peg offset is automatically computed as peg_height/2 along the
+        approach axis to ensure peg base sits on the EE flange surface.
         """
-        peg_offset = self.profile.peg_offset_from_ee
         peg_radius = self.profile.peg_radius
         peg_height = self.profile.peg_height
         peg_mat = self.profile.peg_material or (1.0, 1.0, 0.0)
+
+        # Compute peg offset dynamically: peg center offset by peg_height/2
+        # so that peg base sits on EE flange surface.
+        # peg_offset_from_ee defines the approach axis direction (e.g., [1,0,0] for X-axis)
+        base_offset = self.profile.peg_offset_from_ee or [1.0, 0.0, 0.0]
+        peg_offset = [base_offset[0] * peg_height / 2,
+                      base_offset[1] * peg_height / 2,
+                      base_offset[2] * peg_height / 2]
 
         peg_prim_path = "/World/envs/env_.*/Robot/.*{}/peg".format(self.profile.ee_body_name)
         peg_cfg = sim_utils.CylinderCfg(
