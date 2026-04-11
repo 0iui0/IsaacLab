@@ -135,19 +135,18 @@ class ForgeEnv(DirectRLEnv):
 
         # Spawn force sensor as a rigid body at EE link + offset
         force_sensor_prim_path = "/World/envs/env_.*/Robot/.*{}/force_sensor".format(self.profile.ee_body_name)
-        force_sensor_cfg = sim_utils.RigidBodyCfg(
+        force_sensor_cfg = sim_utils.CylinderCfg(
             prim_path=force_sensor_prim_path,
-            spawn=sim_utils.CylinderCfg(
-                radius=0.02,
-                height=0.01,
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.8, 0.8)),
-            ),
+            radius=0.02,
+            height=0.01,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 linear_damping=0.0,
                 angular_damping=0.0,
             ),
-            mass=0.01,  # Negligible mass for force sensor
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.01),  # Negligible mass for force sensor
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.8, 0.8)),
         )
         force_sensor_cfg.func(
             force_sensor_prim_path,
@@ -158,18 +157,10 @@ class ForgeEnv(DirectRLEnv):
 
         # Spawn peg as a rigid body (cylinder) attached to EE link
         peg_prim_path = "/World/envs/env_.*/Robot/.*{}/peg".format(self.profile.ee_body_name)
-        peg_cfg = sim_utils.RigidBodyCfg(
+        peg_cfg = sim_utils.CylinderCfg(
             prim_path=peg_prim_path,
-            spawn=sim_utils.CylinderCfg(
-                radius=peg_radius,
-                height=peg_height,
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.4, 0.2)),
-                physics_material=sim_utils.RigidBodyMaterialCfg(
-                    static_friction=peg_mat[0],
-                    dynamic_friction=peg_mat[1],
-                    restitution=peg_mat[2],
-                ),
-            ),
+            radius=peg_radius,
+            height=peg_height,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=True,
                 linear_damping=0.0,
@@ -179,8 +170,14 @@ class ForgeEnv(DirectRLEnv):
                 solver_position_iteration_count=192,
                 solver_velocity_iteration_count=1,
             ),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.05),  # Light peg mass
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
-            mass=0.05,  # Light peg mass
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=peg_mat[0],
+                dynamic_friction=peg_mat[1],
+                restitution=peg_mat[2],
+            ),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.4, 0.2)),
         )
         peg_cfg.func(
             peg_prim_path,
