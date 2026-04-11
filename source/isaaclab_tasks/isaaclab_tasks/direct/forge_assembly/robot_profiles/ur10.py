@@ -81,10 +81,10 @@ UR10_FORGE_PROFILE = RobotProfile(
     # --- Grasp type ---
     grasp_type="fixed_peg",
     # --- Fixed peg configuration ---
-    # Approach axis direction: [1,0,0] = ee_link X-axis (flange outward).
+    # Approach axis direction: [0,1,0] = ee_link Y-axis (flange outward).
     # Actual peg offset is computed dynamically as: direction * peg_height/2
     # This ensures peg base always sits on flange surface regardless of peg_height.
-    peg_offset_from_ee=[1.0, 0.0, 0.0],
+    peg_offset_from_ee=[0.0, 1.0, 0.0],
     peg_radius=0.004,  # 8mm diameter peg (fits 8.1mm hole with clearance)
     peg_height=0.050,  # 50mm peg height (matches Franka peg)
     peg_material=(1.0, 1.0, 0.0),  # (static_friction, dynamic_friction, restitution)
