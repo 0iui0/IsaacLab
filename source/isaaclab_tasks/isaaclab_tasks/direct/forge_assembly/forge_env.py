@@ -164,7 +164,9 @@ class ForgeEnv(DirectRLEnv):
             peg_prim_path,
             peg_cfg,
             translation=(peg_offset[0], peg_offset[1], peg_offset[2]),
-            orientation=(1.0, 0.0, 0.0, 0.0),
+            # Rotate cylinder 90° around X-axis so peg points along EE approach direction (-Z in EE frame).
+            # Default cylinder extends along Z; we want it along -Z (downward from EE).
+            orientation=(0.7071, 0.7071, 0.0, 0.0),  # 90° rotation around X
         )
 
     # -----------------------------------------------------------------------
