@@ -69,7 +69,7 @@ UR10_FORGE_PROFILE = RobotProfile(
     ee_body_name="ee_link",
     left_finger_body_name=None,
     right_finger_body_name=None,
-    force_sensor_body_name=None,  # Will be created dynamically
+    force_sensor_body_name="force_sensor",  # Dynamically created
     # --- IK / control ---
     default_arm_joint_pos=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
     reset_arm_joint_pos=[0.0, -1.712, 1.712, -1.571, -1.571, 0.0],
@@ -78,4 +78,9 @@ UR10_FORGE_PROFILE = RobotProfile(
     fingerpad_length=0.0,
     # --- Grasp type ---
     grasp_type="fixed_peg",
+    # --- Fixed peg configuration ---
+    peg_offset_from_ee=[0.0, 0.0, 0.15],  # Peg extends 15cm from EE link
+    peg_radius=0.0125,  # 25mm diameter peg
+    peg_height=0.0625,  # 62.5mm peg height
+    peg_material=(1.0, 1.0, 0.0),  # (static_friction, dynamic_friction, restitution)
 )

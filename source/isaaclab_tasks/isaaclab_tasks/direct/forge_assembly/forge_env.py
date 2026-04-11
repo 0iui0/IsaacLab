@@ -54,11 +54,8 @@ class ForgeEnv(DirectRLEnv):
 
         self.flip_quats = torch.ones((self.num_envs,), dtype=torch.float32, device=self.device)
 
-        # Force sensor.
-        if self.profile.force_sensor_body_name is not None:
-            self.force_sensor_body_idx = self._robot.body_names.index(self.profile.force_sensor_body_name)
-        else:
-            self.force_sensor_body_idx = None
+        # Force sensor - body index will be set in _init_tensors after scene setup
+        self.force_sensor_body_idx = None
         self.force_sensor_smooth = torch.zeros((self.num_envs, 6), device=self.device)
         self.force_sensor_world_smooth = torch.zeros((self.num_envs, 6), device=self.device)
 
@@ -105,6 +102,11 @@ class ForgeEnv(DirectRLEnv):
             self._small_gear_asset = Articulation(self.cfg_task.small_gear_cfg)
             self._large_gear_asset = Articulation(self.cfg_task.large_gear_cfg)
 
+        # For fixed-peg robots, spawn peg + force sensor as rigid bodies attached to EE link
+        # This must happen BEFORE clone_environments so the peg gets cloned with the environment
+        if self.profile.grasp_type == "fixed_peg" and self.profile.peg_offset_from_ee is not None:
+            self._spawn_fixed_peg_assets()
+
         self.scene.clone_environments(copy_from_source=False)
         if self.device == "cpu":
             self.scene.filter_collisions()
@@ -119,6 +121,77 @@ class ForgeEnv(DirectRLEnv):
 
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
+
+    def _spawn_fixed_peg_assets(self):
+        """Spawn peg and force sensor as rigid bodies attached to EE link for fixed-peg robots.
+
+        The peg is spawned as a cylinder rigid body, and the force sensor is spawned
+        as a rigid body between the EE link and the peg.
+        """
+        peg_offset = self.profile.peg_offset_from_ee
+        peg_radius = self.profile.peg_radius
+        peg_height = self.profile.peg_height
+        peg_mat = self.profile.peg_material or (1.0, 1.0, 0.0)
+
+        # Spawn force sensor as a rigid body at EE link + offset
+        force_sensor_prim_path = "/World/envs/env_.*/Robot/.*{}/force_sensor".format(self.profile.ee_body_name)
+        force_sensor_cfg = sim_utils.RigidBodyCfg(
+            prim_path=force_sensor_prim_path,
+            spawn=sim_utils.CylinderCfg(
+                radius=0.02,
+                height=0.01,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.8, 0.8)),
+            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=True,
+                linear_damping=0.0,
+                angular_damping=0.0,
+            ),
+            mass=0.01,  # Negligible mass for force sensor
+        )
+        force_sensor_cfg.func(
+            force_sensor_prim_path,
+            force_sensor_cfg,
+            translation=(peg_offset[0], peg_offset[1], peg_offset[2] - peg_height * 0.5 - 0.005),
+            orientation=(1.0, 0.0, 0.0, 0.0),
+        )
+
+        # Spawn peg as a rigid body (cylinder) attached to EE link
+        peg_prim_path = "/World/envs/env_.*/Robot/.*{}/peg".format(self.profile.ee_body_name)
+        peg_cfg = sim_utils.RigidBodyCfg(
+            prim_path=peg_prim_path,
+            spawn=sim_utils.CylinderCfg(
+                radius=peg_radius,
+                height=peg_height,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.6, 0.4, 0.2)),
+                physics_material=sim_utils.RigidBodyMaterialCfg(
+                    static_friction=peg_mat[0],
+                    dynamic_friction=peg_mat[1],
+                    restitution=peg_mat[2],
+                ),
+            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=True,
+                linear_damping=0.0,
+                angular_damping=0.0,
+                max_linear_velocity=1000.0,
+                max_angular_velocity=3666.0,
+                solver_position_iteration_count=192,
+                solver_velocity_iteration_count=1,
+            ),
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
+            mass=0.05,  # Light peg mass
+        )
+        peg_cfg.func(
+            peg_prim_path,
+            peg_cfg,
+            translation=(peg_offset[0], peg_offset[1], peg_offset[2]),
+            orientation=(1.0, 0.0, 0.0, 0.0),
+        )
+
+        # Update robot body names list to include the newly spawned bodies
+        # This is needed for force_sensor_body_idx lookup in _init_tensors
+        self._robot.body_names.extend(["force_sensor", "peg"])
 
     # -----------------------------------------------------------------------
     # Initialization
@@ -145,6 +218,17 @@ class ForgeEnv(DirectRLEnv):
         if self.profile.has_gripper and self.profile.left_finger_body_name is not None:
             self.left_finger_body_idx = self._robot.body_names.index(self.profile.left_finger_body_name)
             self.right_finger_body_idx = self._robot.body_names.index(self.profile.right_finger_body_name)
+
+        # Force sensor body index - for fixed-peg robots, it's dynamically created and added to body_names
+        if self.profile.force_sensor_body_name is not None:
+            try:
+                self.force_sensor_body_idx = self._robot.body_names.index(self.profile.force_sensor_body_name)
+            except ValueError:
+                # For fixed-peg robots, force sensor might not be in body_names yet
+                # Use the EE body index as a fallback (force is measured at EE)
+                self.force_sensor_body_idx = self.ee_body_idx
+        else:
+            self.force_sensor_body_idx = None
 
         # Finite-differencing.
         self.last_update_timestamp = 0.0
@@ -804,9 +888,9 @@ class ForgeEnv(DirectRLEnv):
     def get_handheld_asset_relative_pose(self):
         """Get default relative pose between held asset and EE."""
         if self.profile.grasp_type == "fixed_peg":
-            # Peg is rigidly attached; relative pose is just the peg geometry offset.
+            # Peg is rigidly attached; relative pose is just the peg geometry offset from profile.
             held_asset_relative_pos = torch.zeros((self.num_envs, 3), device=self.device)
-            held_asset_relative_pos[:, 2] = self.cfg_task.held_asset_cfg.height
+            held_asset_relative_pos[:, 2] = self.profile.peg_height
             held_asset_relative_quat = (
                 torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
             )
@@ -815,7 +899,7 @@ class ForgeEnv(DirectRLEnv):
         if self.cfg_task.name == "peg_insert":
             held_asset_relative_pos = torch.zeros((self.num_envs, 3), device=self.device)
             held_asset_relative_pos[:, 2] = self.cfg_task.held_asset_cfg.height
-            held_asset_relative_pos[:, 2] -= self.cfg_task.robot_cfg.franka_fingerpad_length
+            held_asset_relative_pos[:, 2] -= self.profile.fingerpad_length
         elif self.cfg_task.name == "gear_mesh":
             held_asset_relative_pos = torch.zeros((self.num_envs, 3), device=self.device)
             gear_base_offset = self.cfg_task.fixed_asset_cfg.medium_gear_base_offset

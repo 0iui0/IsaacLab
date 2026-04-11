@@ -61,3 +61,16 @@ class RobotProfile:
     # --- Grasp type ---
     grasp_type: str = "gripper"
     """How the peg is held: "gripper" (Franka) or "fixed_peg" (UR10/CR5)."""
+
+    # --- Fixed peg configuration (for UR10/CR5) ---
+    peg_offset_from_ee: list = None
+    """[x, y, z] offset from EE link to peg tip (meters). Only used for fixed_peg robots."""
+
+    peg_radius: float = 0.0
+    """Radius of the peg (meters). Only used for fixed_peg robots."""
+
+    peg_height: float = 0.0
+    """Height of the peg (meters). Only used for fixed_peg robots."""
+
+    peg_material: tuple = None
+    """(static_friction, dynamic_friction, restitution) for peg. Only used for fixed_peg robots."""

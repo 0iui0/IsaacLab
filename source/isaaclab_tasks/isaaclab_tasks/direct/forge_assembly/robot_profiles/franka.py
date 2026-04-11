@@ -100,4 +100,9 @@ FRANKA_FORGE_PROFILE = RobotProfile(
     fingerpad_length=0.017608,
     # --- Grasp type ---
     grasp_type="gripper",
+    # --- Fixed peg configuration (not used for Franka) ---
+    peg_offset_from_ee=None,
+    peg_radius=0.0,
+    peg_height=0.0,
+    peg_material=None,
 )
