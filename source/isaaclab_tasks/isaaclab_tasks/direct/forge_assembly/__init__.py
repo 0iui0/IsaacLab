@@ -1,0 +1,71 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+import gymnasium as gym
+
+from . import agents
+
+##
+# Register Gym environments.
+#
+# ID convention: Isaac-ForgeAssembly-{Robot}-{Task}-Direct-v0
+# This avoids collision with the original forge/ IDs (Isaac-Forge-*-Direct-v0).
+##
+
+# --- Franka ---
+
+gym.register(
+    id="Isaac-ForgeAssembly-Franka-PegInsert-Direct-v0",
+    entry_point=f"{__name__}.forge_env:ForgeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.forge_env_cfg:FrankaForgeTaskPegInsertCfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Isaac-ForgeAssembly-Franka-GearMesh-Direct-v0",
+    entry_point=f"{__name__}.forge_env:ForgeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.forge_env_cfg:FrankaForgeTaskGearMeshCfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Isaac-ForgeAssembly-Franka-NutThread-Direct-v0",
+    entry_point=f"{__name__}.forge_env:ForgeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.forge_env_cfg:FrankaForgeTaskNutThreadCfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg_nut_thread.yaml",
+    },
+)
+
+# --- UR10 ---
+
+gym.register(
+    id="Isaac-ForgeAssembly-UR10-PegInsert-Direct-v0",
+    entry_point=f"{__name__}.forge_env:ForgeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.forge_env_cfg:UR10ForgeTaskPegInsertCfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
+    },
+)
+
+# --- CR5 ---
+
+gym.register(
+    id="Isaac-ForgeAssembly-CR5-PegInsert-Direct-v0",
+    entry_point=f"{__name__}.forge_env:ForgeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.forge_env_cfg:CR5ForgeTaskPegInsertCfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
+    },
+)
