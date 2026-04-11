@@ -111,6 +111,11 @@ class ForgeEnv(DirectRLEnv):
         if self.device == "cpu":
             self.scene.filter_collisions()
 
+        # For fixed-peg robots, extend body_names to include the spawned peg and force sensor
+        # This must happen AFTER clone_environments when the robot's physx view is available
+        if self.profile.grasp_type == "fixed_peg":
+            self._robot.body_names.extend(["force_sensor", "peg"])
+
         self.scene.articulations["robot"] = self._robot
         self.scene.articulations["fixed_asset"] = self._fixed_asset
         if self._held_asset is not None:
@@ -183,10 +188,6 @@ class ForgeEnv(DirectRLEnv):
             translation=(peg_offset[0], peg_offset[1], peg_offset[2]),
             orientation=(1.0, 0.0, 0.0, 0.0),
         )
-
-        # Update robot body names list to include the newly spawned bodies
-        # This is needed for force_sensor_body_idx lookup in _init_tensors
-        self._robot.body_names.extend(["force_sensor", "peg"])
 
     # -----------------------------------------------------------------------
     # Initialization
