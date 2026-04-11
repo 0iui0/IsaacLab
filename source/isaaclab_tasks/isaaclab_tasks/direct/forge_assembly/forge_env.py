@@ -322,11 +322,10 @@ class ForgeEnv(DirectRLEnv):
 
         # Force sensing.
         if self.profile.grasp_type == "fixed_peg" and self._held_asset is not None:
-            # Fixed-peg: use net contact forces on the held_asset (peg articulation).
-            # The peg is a single-body articulation, so link index 0 gives the peg's forces.
-            net_forces = self._held_asset.root_physx_view.get_link_net_contact_forces()[:, 0, :]
-            self.force_sensor_world = torch.zeros((self.num_envs, 6), device=self.device)
-            self.force_sensor_world[:, 0:3] = net_forces
+            # Fixed-peg: use incoming joint force on the held_asset (peg articulation).
+            # For a single-body articulation with a floating base, link index 0
+            # captures all external forces including contact.
+            self.force_sensor_world = self._held_asset.root_physx_view.get_link_incoming_joint_force()[:, 0]
             alpha = self.cfg.ft_smoothing_factor
             self.force_sensor_world_smooth = alpha * self.force_sensor_world + (1 - alpha) * self.force_sensor_world_smooth
 
