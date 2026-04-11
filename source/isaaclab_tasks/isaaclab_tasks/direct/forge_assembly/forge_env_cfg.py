@@ -337,11 +337,11 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
 
     # UR10-specific task overrides: closer fixed_asset, tighter workspace
     task = ForgePegInsert(
-        # hand_init_pos[2] must place the peg bottom near the hole top.
+        # hand_init_pos[2] must place the peg just above (not inside) the hole.
         # Peg bottom = EE - (peg_offset + peg_height/2) = EE - 0.065m.
-        # With hand_init_pos[2]=0.05, peg bottom is 1.5cm below hole top
-        # (similar to Franka where peg starts slightly inside the hole).
-        hand_init_pos=[0.0, 0.0, 0.05],
+        # With 0.067, peg bottom is 2mm above hole top — close enough for
+        # contact during early training but avoids interpenetration at reset.
+        hand_init_pos=[0.0, 0.0, 0.067],
         hand_init_pos_noise=[0.01, 0.01, 0.005],
         fixed_asset_init_pos_noise=[0.03, 0.03, 0.01],
         fixed_asset=_make_fixed_asset_cfg(
