@@ -337,12 +337,13 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
 
     # UR10-specific task overrides: closer fixed_asset, tighter workspace
     task = ForgePegInsert(
-        # hand_init_pos[2] must place the peg just above (not inside) the hole.
-        # Peg bottom = EE - (peg_offset + peg_height/2) = EE - 0.065m.
-        # With 0.067, peg bottom is 2mm above hole top — close enough for
-        # contact during early training but avoids interpenetration at reset.
+        # hand_init_orn: rotate EE so peg (along ee_link X-axis) points downward.
+        # UR10 ee_link X-axis points forward at zero pose.
+        # Need pitch=-90° (绕 Y 轴 -90°) to make X-axis point downward.
         hand_init_pos=[0.0, 0.0, 0.067],
         hand_init_pos_noise=[0.01, 0.01, 0.005],
+        hand_init_orn=[0.0, -1.571, 0.0],  # [roll, pitch, yaw]: pitch=-90° makes peg vertical
+        hand_init_orn_noise=[0.0, 0.0, 0.785],
         fixed_asset_init_pos_noise=[0.03, 0.03, 0.01],
         # Lower contact threshold: UR10 peg is a collision-only prim (no mass),
         # so contact forces are smaller than Franka's held asset (19g mass).

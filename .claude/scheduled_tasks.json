@@ -5,7 +5,7 @@
       "cron": "*/15 * * * *",
       "prompt": "Check UR10 forge assembly training metrics and report status. Do the following:\n\n1. Read the training log: `docker exec isaac-lab-forge-test bash -c \"tail -30 /tmp/ur10_training_debug.log\"`\n2. Check the wandb run page for metrics: use WebFetch to read https://wandb.ai/safezpa/forge-assembly-ur10/runs/0uzamznj (the current debug run) and check:\n   - Episode reward (should start from ~0, not large values)\n   - Success rate (should be 0 initially, slowly increase)\n   - Keypoint reward logs (kp_baseline, kp_coarse, kp_fine - should show progress toward hole)\n   - Contact force (ft_force - should show if peg contacts hole)\n   - Contact penalty (should be low initially)\n3. Check if training process is still running: `docker exec isaac-lab-forge-test bash -c \"ps aux | grep train.py | grep -v grep\"`\n4. Report findings in Chinese:\n   - 当前 epoch 和训练速度\n   - 奖励趋势（是否从0开始？是否合理？）\n   - 关键点奖励趋势（peg是否在靠近hole？）\n   - 力反馈信息（是否有接触？）\n   - 成功率趋势\n   - 如果发现异常（如reward一开始就很大，或完全没有进展），建议停止训练并排查问题\n   - 与Franka基线对比是否正常",
       "createdAt": 1775938463944,
-      "lastFiredAt": 1775948895070,
+      "lastFiredAt": 1775949589831,
       "recurring": true
     }
   ]
