@@ -136,7 +136,6 @@ class ForgeEnv(DirectRLEnv):
         # Spawn force sensor as a rigid body at EE link + offset
         force_sensor_prim_path = "/World/envs/env_.*/Robot/.*{}/force_sensor".format(self.profile.ee_body_name)
         force_sensor_cfg = sim_utils.CylinderCfg(
-            prim_path=force_sensor_prim_path,
             radius=0.02,
             height=0.01,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
@@ -158,7 +157,6 @@ class ForgeEnv(DirectRLEnv):
         # Spawn peg as a rigid body (cylinder) attached to EE link
         peg_prim_path = "/World/envs/env_.*/Robot/.*{}/peg".format(self.profile.ee_body_name)
         peg_cfg = sim_utils.CylinderCfg(
-            prim_path=peg_prim_path,
             radius=peg_radius,
             height=peg_height,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
