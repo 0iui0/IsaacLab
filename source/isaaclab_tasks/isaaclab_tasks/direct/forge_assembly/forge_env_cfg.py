@@ -352,6 +352,12 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     robot_profile: RobotProfile = UR10_FORGE_PROFILE
     events: EventCfgFixedPeg = EventCfgFixedPeg()
 
+    # UR10 has 6 arm joints, so reset_joints and default_dof_pos_tensor must have 6 values
+    ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
+        reset_joints=[0.0, -1.571, 1.571, -1.571, -1.571, 0.0],  # UR10 home position
+        default_dof_pos_tensor=[0.0, -1.571, 1.571, 0.0, -1.571, 0.0],  # UR10 null-space position
+    )
+
 
 # ---------------------------------------------------------------------------
 # Robot-specific config variants: CR5
@@ -366,3 +372,9 @@ class CR5ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     """
     robot_profile: RobotProfile = CR5_FORGE_PROFILE
     events: EventCfgFixedPeg = EventCfgFixedPeg()
+
+    # CR5 has 6 arm joints, so reset_joints and default_dof_pos_tensor must have 6 values
+    ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
+        reset_joints=[0.0, -1.571, 1.571, 0.0, 0.0, 0.0],  # CR5 home position
+        default_dof_pos_tensor=[0.0, -1.571, 1.571, 0.0, 0.0, 0.0],  # CR5 null-space position
+    )
