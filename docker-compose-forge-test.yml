@@ -1,0 +1,35 @@
+services:
+  isaac-lab-forge-test:
+    image: nvcr.io/nvidia/isaac-lab:2.3.2
+    container_name: isaac-lab-forge-test
+    stdin_open: true
+    tty: true
+    network_mode: host
+    privileged: true
+    volumes:
+      # Mount source code to the same path as the base isaac-lab container uses
+      - ~/IsaacLab/source:/workspace/isaaclab/source:rw
+      # Cache directories
+      - ~/docker/isaac-sim/cache/kit:/isaac-sim/kit/cache:rw
+      - ~/docker/isaac-sim/cache/ov:/root/.cache/ov:rw
+      - ~/docker/isaac-sim/cache/pip:/root/.cache/pip:rw
+      - ~/docker/isaac-sim/cache/glcache:/root/.cache/nvidia/GLCache:rw
+      - ~/docker/isaac-sim/cache/computecache:/root/.nv/ComputeCache:rw
+      - ~/docker/isaac-sim/logs:/root/.nvidia-omniverse/logs:rw
+      - ~/docker/isaac-sim/data:/root/.local/share/ov/data:rw
+      - ~/docker/isaac-sim/documents:/root/Documents:rw
+    environment:
+      - ACCEPT_EULA=Y
+      - PRIVACY_CONSENT=Y
+      - DISPLAY=${DISPLAY}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    working_dir: /workspace/isaaclab
+    command: "bash -c 'xhost +local:root && exec bash'"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["all"]
+              capabilities: ["gpu"]
