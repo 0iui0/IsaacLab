@@ -92,21 +92,29 @@ class ForgeEnv(DirectRLEnv):
         self._fixed_asset = Articulation(self.cfg_task.fixed_asset)
 
         # For gripper robots, the held asset is loaded from USD.
-        # For fixed-peg robots, the peg is spawned as a collision shape on the EE link
-        # BEFORE the articulation is created, so it's part of the articulation from the start.
         if self.profile.grasp_type == "gripper":
             self._held_asset = Articulation(self.cfg_task.held_asset)
         else:
             self._held_asset = None
 
-        # Spawn peg collision shape BEFORE creating robot Articulation.
-        # This ensures the peg is part of the EE link's rigid body when PhysX
-        # initializes the articulation, so contact forces on the peg are reported
-        # through get_link_incoming_joint_force() on the ee_body_idx.
+        # For fixed-peg robots, we need the peg collision shape to be part of
+        # the EE link's rigid body when PhysX initializes the articulation.
+        # This requires: (1) spawn robot USD, (2) add peg to EE link, (3) create Articulation.
+        robot_cfg = self.profile.robot
         if self.profile.grasp_type == "fixed_peg" and self.profile.peg_offset_from_ee is not None:
+            # Step 1: Spawn robot USD prims manually (before Articulation).
+            robot_cfg.spawn.func(
+                robot_cfg.prim_path,
+                robot_cfg.spawn,
+                translation=robot_cfg.init_state.pos,
+                orientation=robot_cfg.init_state.rot,
+            )
+            # Step 2: Spawn peg collision on the now-existing EE link.
             self._spawn_peg_collision_on_ee()
+            # Step 3: Prevent Articulation from re-spawning (prims already exist).
+            robot_cfg.spawn = None
 
-        self._robot = Articulation(self.profile.robot)
+        self._robot = Articulation(robot_cfg)
 
         if self.cfg_task.name == "gear_mesh":
             self._small_gear_asset = Articulation(self.cfg_task.small_gear_cfg)
