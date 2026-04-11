@@ -111,11 +111,6 @@ class ForgeEnv(DirectRLEnv):
         if self.device == "cpu":
             self.scene.filter_collisions()
 
-        # For fixed-peg robots, extend body_names to include the spawned peg and force sensor
-        # This must happen AFTER clone_environments when the robot's physx view is available
-        if self.profile.grasp_type == "fixed_peg":
-            self._robot.body_names.extend(["force_sensor", "peg"])
-
         self.scene.articulations["robot"] = self._robot
         self.scene.articulations["fixed_asset"] = self._fixed_asset
         if self._held_asset is not None:
@@ -215,14 +210,12 @@ class ForgeEnv(DirectRLEnv):
             self.left_finger_body_idx = self._robot.body_names.index(self.profile.left_finger_body_name)
             self.right_finger_body_idx = self._robot.body_names.index(self.profile.right_finger_body_name)
 
-        # Force sensor body index - for fixed-peg robots, it's dynamically created and added to body_names
-        if self.profile.force_sensor_body_name is not None:
-            try:
-                self.force_sensor_body_idx = self._robot.body_names.index(self.profile.force_sensor_body_name)
-            except ValueError:
-                # For fixed-peg robots, force sensor might not be in body_names yet
-                # Use the EE body index as a fallback (force is measured at EE)
-                self.force_sensor_body_idx = self.ee_body_idx
+        # Force sensor body index - for fixed-peg robots, use EE body index since the
+        # dynamically spawned force sensor is not part of the articulation
+        if self.profile.grasp_type == "fixed_peg":
+            self.force_sensor_body_idx = self.ee_body_idx
+        elif self.profile.force_sensor_body_name is not None:
+            self.force_sensor_body_idx = self._robot.body_names.index(self.profile.force_sensor_body_name)
         else:
             self.force_sensor_body_idx = None
 
