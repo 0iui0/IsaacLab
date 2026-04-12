@@ -302,15 +302,44 @@ class FrankaForgeTaskNutThreadCfg(ForgeTaskNutThreadCfg):
 
 
 @configclass
-class EventCfgFixedPeg(EventCfg):
+class EventCfgFixedPeg:
     """Event configuration for fixed-peg robots (UR10/CR5).
 
     The peg is spawned as a collision shape on the EE link, not as a separate
     held_asset articulation. Therefore, held_asset event terms must be disabled.
     """
-    # Disable held_asset events — peg is part of robot, not a separate asset
-    object_scale_mass = None
-    held_physics_material = None
+    # No held_asset events — peg is part of robot, not a separate asset
+    # Only include events for fixed_asset and robot
+
+    fixed_physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("fixed_asset"),
+            "static_friction_range": (0.25, 1.25),
+            "dynamic_friction_range": (0.25, 0.25),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 128,
+        },
+    )
+
+    robot_physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "static_friction_range": (0.75, 0.75),
+            "dynamic_friction_range": (0.75, 0.75),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 1,
+        },
+    )
+
+    dead_zone_thresholds = EventTerm(
+        func=randomize_dead_zone,
+        mode="interval",
+        interval_range_s=(2.0, 2.0),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -330,19 +359,24 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     events: EventCfgFixedPeg = EventCfgFixedPeg()
 
     # UR10 has 6 arm joints, so reset_joints and default_dof_pos_tensor must have 6 values
+    # Note: peg is now along ee_link Z-axis (not X-axis), so after IK reset when
+    # ee_link Z-axis points down, peg points down automatically.
     ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
-        reset_joints=[0.0, -0.5, -0.5, -0.5, 0.0, 0.0],
-        default_dof_pos_tensor=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
+        reset_joints=[0.0, -0.5, -0.5, -0.5, 0.0, 0.0],  # q3 +90°: -0.5 + 1.571 = 1.071
+        # reset_joints=[0.0, -0.0, -0.0, -0.0, 0.0, 0.0],  # q3 +90°: -0.5 + 1.571 = 1.071
+        default_dof_pos_tensor=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0], # q3 +90°: -0.5 + 1.571 = 1.071
+        # default_dof_pos_tensor=[0.0, 0, 0, 0.0, 0, 0.0], # q3 +90°: -0.5 + 1.571 = 1.071
     )
 
     # UR10-specific task overrides: closer fixed_asset, tighter workspace
     task = ForgePegInsert(
         # hand_init_orn: [roll, pitch, yaw] in radians.
-        # ee_link X-axis is along arm (horizontal) at zero pose.
-        # To make X-axis point downward (-Z world), rotate +90° around Y (pitch=π/2).
+        # ee_link orientation at zero pose determines which rotation makes peg vertical.
+        # Using roll=180° + yaw=90° to make peg point downward toward hole.
         hand_init_pos=[0.0, 0.0, 0.067],
         hand_init_pos_noise=[0.01, 0.01, 0.005],
-        hand_init_orn=[0.0, 1.571, 0.0],  # pitch=90°: makes ee_link X-axis point down
+        # hand_init_orn=[4.712, 0.0, 1.571],  # roll=270° (180°+90°) + yaw=90°: makes peg vertical down
+        hand_init_orn=[4.712, 1.571, 1.571],  # roll=270° (180°+90°) + yaw=90°: makes peg vertical down
         hand_init_orn_noise=[0.0, 0.0, 0.785],
         fixed_asset_init_pos_noise=[0.03, 0.03, 0.01],
         # Lower contact threshold: UR10 peg is a collision-only prim (no mass),

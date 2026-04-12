@@ -179,3 +179,50 @@ services:
 4. **碰撞检测**: 可视化≠物理，需要正确的 USD 结构和 API
 5. **模块导入**: Gym 注册依赖正确的模块导入顺序
 6. **配置抽象**: RobotProfile 使代码更易维护和扩展
+
+## 9. UR10 Peg 方向问题与解决方案
+
+### 问题描述 (2026-04-12)
+UR10 复位时 peg 没有垂直向下指向孔洞，导致训练无法正常进行。
+
+### 根因分析
+Peg 沿 ee_link X 轴延伸（垂直于法兰盘向外），但 IK 目标姿态 `hand_init_orn` 配置错误：
+- 初始配置：`hand_init_orn=[3.1416, 0.0, 1.571]`（roll=180°, pitch=0°, yaw=90°）
+- 问题：缺少 pitch 分量，ee_link X 轴无法指向下方
+
+### 坐标系关系
+```
+UR10 ee_link 零姿态（所有关节角为 0）:
+- X 轴：沿手臂延伸方向（水平向前）
+- Y 轴：垂直于 X 轴（水平侧向）  
+- Z 轴：垂直于法兰盘平面
+
+Peg 配置（robot_profiles/ur10.py）:
+- peg_offset_from_ee=[1.0, 0.0, 0.0]  # peg 沿 ee_link X 轴延伸
+- CylinderCfg.axis="X"                 # 圆柱体轴向沿 X 轴
+
+目标：peg 指向世界坐标 -Z（垂直向下）
+```
+
+### 解决方案
+需要让 ee_link X 轴指向 [0, 0, -1]，这需要：
+1. **pitch=90°**（绕 Y 轴旋转）：使 X 轴从水平向前 → 垂直向下
+2. **roll 和 yaw**：调整 ee_link 的 Y/Z 轴方向
+
+```python
+# forge_env_cfg.py - UR10ForgeTaskPegInsertCfg
+hand_init_orn=[4.712, 1.571, 1.571]  # roll=270° + pitch=90° + yaw=90°
+```
+
+### 验证方法
+运行训练或调试脚本，检查复位时的 debug 输出：
+```
+EE X-axis (peg direction): [0, 0, -1]  ✓ 垂直向下
+X-axis dot [0,0,-1]: 1.0000            ✓ 完美对齐
+```
+
+### 经验教训
+1. **理解 ee_link 坐标系**：不同机器人的 ee_link 零姿态可能不同，需要实际测量
+2. **peg 轴向与 ee_link 轴向一致**：peg_offset_from_ee 和 CylinderCfg.axis 必须匹配
+3. **IK 目标姿态决定最终方向**：hand_init_orn 是在 ee_link 零姿态基础上的旋转
+4. **调试输出很重要**：在 `_reset_idx` 中添加 EE 轴向打印，快速定位问题

@@ -133,6 +133,10 @@ services:
 - No null-space for redundancy resolution
 - Optimal workspace: 0.3m - 0.8m from base
 - Default reset pose: `[0, -0.5, -0.5, -0.5, 0, 0]` works well for table tasks
+- **Peg direction**: along ee_link X-axis (perpendicular to flange, outward)
+- **IK target orientation**: `hand_init_orn=[4.712, 1.571, 1.571]` (roll=270°, pitch=90°, yaw=90°)
+  - pitch=90° makes ee_link X-axis point down
+  - roll=270° + yaw=90° orient the flange correctly
 
 ### Isaac Sim APIs
 - `sim_utils.CylinderCfg.func()` - Spawn cylinder prims
