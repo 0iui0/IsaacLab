@@ -162,7 +162,7 @@ class ForgeEnv(DirectRLEnv):
         peg_cfg = sim_utils.CylinderCfg(
             radius=peg_radius,
             height=peg_height,
-            axis="X",  # UR10 ee_link: X-axis points along approach direction (out of flange)
+            axis="X",  # Peg along ee_link X-axis (perpendicular to flange)
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.005, rest_offset=0.0),
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 static_friction=peg_mat[0],
@@ -450,12 +450,22 @@ class ForgeEnv(DirectRLEnv):
             roll=rot_actions[:, 0], pitch=rot_actions[:, 1], yaw=rot_actions[:, 2]
         )
 
-        rot_180_euler = torch.tensor([np.pi, 0.0, 0.0], device=self.device).repeat(self.num_envs, 1)
-        quat_bolt_to_ee = torch_utils.quat_from_euler_xyz(
-            roll=rot_180_euler[:, 0], pitch=rot_180_euler[:, 1], yaw=rot_180_euler[:, 2]
-        )
-
-        ctrl_target_ee_preclipped_quat = torch_utils.quat_mul(quat_bolt_to_ee, bolt_frame_quat)
+        if self.profile.grasp_type == "fixed_peg":
+            # UR10/CR5: peg along ee_link X-axis. To keep X pointing down,
+            # apply pitch=90° then yaw. quat_mul(yaw, pitch_90) = R_yaw @ R_pitch.
+            pitch_90_euler = torch.tensor([0.0, np.pi / 2, 0.0], device=self.device).repeat(self.num_envs, 1)
+            quat_bolt_to_ee = torch_utils.quat_from_euler_xyz(
+                roll=pitch_90_euler[:, 0], pitch=pitch_90_euler[:, 1], yaw=pitch_90_euler[:, 2]
+            )
+            ctrl_target_ee_preclipped_quat = torch_utils.quat_mul(bolt_frame_quat, quat_bolt_to_ee)
+        else:
+            # Franka: panda_hand Z-axis points down at zero pose.
+            # quat_mul(roll_180, yaw) keeps Z pointing down with yaw rotation.
+            rot_180_euler = torch.tensor([np.pi, 0.0, 0.0], device=self.device).repeat(self.num_envs, 1)
+            quat_bolt_to_ee = torch_utils.quat_from_euler_xyz(
+                roll=rot_180_euler[:, 0], pitch=rot_180_euler[:, 1], yaw=rot_180_euler[:, 2]
+            )
+            ctrl_target_ee_preclipped_quat = torch_utils.quat_mul(quat_bolt_to_ee, bolt_frame_quat)
 
         # Clip position targets.
         self.delta_pos = ctrl_target_ee_preclipped_pos - self.ee_pos
@@ -550,8 +560,12 @@ class ForgeEnv(DirectRLEnv):
         ctrl_target_ee_quat = torch_utils.quat_mul(rot_actions_quat, self.ee_quat)
 
         target_euler_xyz = torch.stack(torch_utils.get_euler_xyz(ctrl_target_ee_quat), dim=1)
-        target_euler_xyz[:, 0] = 3.14159
-        target_euler_xyz[:, 1] = 0.0
+        if self.profile.grasp_type == "fixed_peg":
+            target_euler_xyz[:, 0] = 0.0
+            target_euler_xyz[:, 1] = np.pi / 2  # pitch=90° keeps peg down
+        else:
+            target_euler_xyz[:, 0] = 3.14159  # Franka: roll=180° keeps peg down
+            target_euler_xyz[:, 1] = 0.0
 
         ctrl_target_ee_quat = torch_utils.quat_from_euler_xyz(
             roll=target_euler_xyz[:, 0], pitch=target_euler_xyz[:, 1], yaw=target_euler_xyz[:, 2]
@@ -747,6 +761,22 @@ class ForgeEnv(DirectRLEnv):
 
         # FORGE-specific randomization.
         self._reset_forge_randomization(env_ids)
+
+        # DEBUG: Print UR10 EE pose at reset (all envs)
+        if self.profile.num_arm_joints == 6:
+            import numpy as np
+            import sys
+            for i in env_ids[:8].cpu().numpy():  # Limit to first 8
+                ee_pose = self._robot.data.body_state_w[i, self.ee_body_idx]
+                ee_quat = ee_pose[3:7].cpu().numpy()
+                w, x, y, z = ee_quat
+                # EE X-axis (peg direction) via rotation matrix
+                ee_x = np.array([1 - 2*y*y - 2*z*z, 2*x*y + 2*z*w, 2*x*z - 2*y*w])
+                xdot = np.dot(ee_x, np.array([0.0, 0.0, -1.0]))
+                tag = "OK" if xdot > 0.9 else "BAD"
+                joints_str = ", ".join(f"{j:.3f}" for j in self._robot.data.joint_pos[i, :6].cpu().numpy())
+                print(f"  [Reset] env {i}: Xdown={xdot:+.3f} [{tag}]  joints=[{joints_str}]", flush=True)
+            sys.stdout.flush()
 
     def _reset_buffers(self, env_ids):
         """Reset buffers."""

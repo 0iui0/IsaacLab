@@ -362,10 +362,8 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     # Note: peg is now along ee_link Z-axis (not X-axis), so after IK reset when
     # ee_link Z-axis points down, peg points down automatically.
     ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
-        reset_joints=[0.0, -0.5, -0.5, -0.5, 0.0, 0.0],  # q3 +90°: -0.5 + 1.571 = 1.071
-        # reset_joints=[0.0, -0.0, -0.0, -0.0, 0.0, 0.0],  # q3 +90°: -0.5 + 1.571 = 1.071
-        default_dof_pos_tensor=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0], # q3 +90°: -0.5 + 1.571 = 1.071
-        # default_dof_pos_tensor=[0.0, 0, 0, 0.0, 0, 0.0], # q3 +90°: -0.5 + 1.571 = 1.071
+        reset_joints=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
+        default_dof_pos_tensor=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
     )
 
     # UR10-specific task overrides: closer fixed_asset, tighter workspace

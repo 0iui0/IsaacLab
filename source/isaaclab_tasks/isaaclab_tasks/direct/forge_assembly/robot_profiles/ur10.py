@@ -74,17 +74,18 @@ UR10_FORGE_PROFILE = RobotProfile(
     force_sensor_body_name="force_sensor",  # Dynamically created
     # --- IK / control ---
     default_arm_joint_pos=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
-    reset_arm_joint_pos=[0.0, -0.5, -0.5, -0.5, 0.0, 0.0],
+    reset_arm_joint_pos=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],  # Same as default; q5=-pi/2 ensures peg points down
     null_space_default_pos=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
     # --- End-effector geometry ---
     fingerpad_length=0.0,
     # --- Grasp type ---
     grasp_type="fixed_peg",
     # --- Fixed peg configuration ---
-    # Approach axis direction: [1,0,0] = ee_link X-axis (flange outward).
+    # Peg orientation: along ee_link X-axis (perpendicular to flange, outward)
+    # Peg position offset: along ee_link X-axis (so peg base sits on flange surface)
     # Actual peg offset is computed dynamically as: direction * peg_height/2
     # This ensures peg base always sits on flange surface regardless of peg_height.
-    peg_offset_from_ee=[1.0, 0.0, 0.0],
+    peg_offset_from_ee=[1.0, 0.0, 0.0],  # X-axis = perpendicular to flange
     peg_radius=0.004,  # 8mm diameter peg (fits 8.1mm hole with clearance)
     peg_height=0.050,  # 50mm peg height (matches Franka peg)
     peg_material=(1.0, 1.0, 0.0),  # (static_friction, dynamic_friction, restitution)
