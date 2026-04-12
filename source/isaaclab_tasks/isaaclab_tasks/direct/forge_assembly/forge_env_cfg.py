@@ -403,7 +403,7 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
         ee_dist_reward_scale=50.0,
         ee_dist_reward_weight=5.0,
         # q1 regularization: penalize base rotation drift.
-        q1_reg_weight=5.0,
+        q1_reg_weight=2.0,
         # Reduced penalties to allow exploration.
         action_penalty_asset_scale=0.0005,  # Halved from 0.001
         action_grad_penalty_scale=0.01,     # 10x reduced from 0.1
