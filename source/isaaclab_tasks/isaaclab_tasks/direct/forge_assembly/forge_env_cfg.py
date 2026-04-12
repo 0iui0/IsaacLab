@@ -402,6 +402,10 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
         # Direct distance reward for strong gradient signal toward target.
         ee_dist_reward_scale=50.0,
         ee_dist_reward_weight=5.0,
+        # Insertion depth reward: gradient for pushing peg INTO the hole.
+        # Normalized by hole height (25mm), so reward=1.0 when fully inserted.
+        # This is the missing gradient that Franka gets via keypoint rewards.
+        insertion_reward_weight=10.0,
         # q1 regularization: penalize base rotation drift.
         q1_reg_weight=2.0,
         # Reduced penalties to allow exploration.

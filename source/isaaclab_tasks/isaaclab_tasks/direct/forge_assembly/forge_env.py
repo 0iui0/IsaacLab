@@ -666,6 +666,17 @@ class ForgeEnv(DirectRLEnv):
             rew_dict["ee_distance"] = ee_dist_reward
             rew_scales["ee_distance"] = self.cfg_task.ee_dist_reward_weight
 
+        # Insertion depth reward: gradient for pushing peg INTO the hole.
+        # Measures how far the peg tip has penetrated below the hole top surface.
+        # Only active for fixed-peg robots. Provides the missing gradient that
+        # Franka gets implicitly through keypoint rewards on the held asset.
+        if self.profile.grasp_type == "fixed_peg" and self.cfg_task.insertion_reward_weight > 0:
+            z_penetration = self.hole_top_pos[:, 2] - self.peg_tip_pos[:, 2]  # positive = inside hole
+            hole_height = self.cfg_task.fixed_asset_cfg.height
+            insertion_depth = torch.clamp(z_penetration / hole_height, 0.0, 1.0)
+            rew_dict["insertion_depth"] = insertion_depth
+            rew_scales["insertion_depth"] = self.cfg_task.insertion_reward_weight
+
         # q1 regularization: penalize base joint rotation from reset value.
         if self.profile.grasp_type == "fixed_peg" and self.cfg_task.q1_reg_weight > 0:
             q1_reset = torch.tensor(self.profile.reset_arm_joint_pos[0], device=self.device)

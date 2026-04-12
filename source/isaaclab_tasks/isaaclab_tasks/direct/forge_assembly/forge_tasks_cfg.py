@@ -88,6 +88,7 @@ class ForgeTask:
     action_penalty_asset_scale: float = 0.001
     ee_dist_reward_scale: float = 50.0
     ee_dist_reward_weight: float = 0.0
+    insertion_reward_weight: float = 0.0  # Peg insertion depth reward (0 = disabled)
     q1_reg_weight: float = 0.0  # Base joint regularization (0 = disabled)
     contact_penalty_scale: float = 0.05
     delay_until_ratio: float = 0.25
