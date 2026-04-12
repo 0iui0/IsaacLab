@@ -93,6 +93,28 @@ def compute_dof_torque(
         torque_null = (null_identity - torch.transpose(jacobian, 1, 2) @ j_eef_inv) @ u_null
         dof_torque[:, :num_arm_joints] += torque_null.squeeze(-1)
 
+    # Joint-space regularization for non-redundant arms (6-DOF).
+    # These robots have no null-space, so we add a lightweight PD term
+    # that pulls joints toward their default positions WITHOUT projecting
+    # into the null-space. This prevents unconstrained joint drift (e.g.
+    # q1 spinning) while still allowing the task-space controller to
+    # override when needed.
+    # Only regularizes specified joints (typically just q1/base) to avoid
+    # fighting the IK solution on other joints.
+    if null_space_default_pos is not None and num_arm_joints <= 6:
+        default_pos_tensor = torch.tensor(null_space_default_pos, device=device).repeat((num_envs, 1))
+        distance = default_pos_tensor - dof_pos[:, :num_arm_joints]
+        distance = (distance + math.pi) % (2 * math.pi) - math.pi
+        kp_joint = getattr(cfg.ctrl, 'kp_joint_reg', 0.0)
+        kd_joint = getattr(cfg.ctrl, 'kd_joint_reg', 0.0)
+        # Only apply to specified joint indices (default: joint 0 = base/q1)
+        joint_reg_indices = getattr(cfg.ctrl, 'joint_reg_indices', [0])
+        if kp_joint > 0 and joint_reg_indices:
+            for idx in joint_reg_indices:
+                if idx < num_arm_joints:
+                    torque_reg = kp_joint * distance[:, idx] + kd_joint * (-dof_vel[:, idx])
+                    dof_torque[:, idx] += torque_reg
+
     dof_torque = torch.clamp(dof_torque, min=-100.0, max=100.0)
     return dof_torque, task_wrench
 

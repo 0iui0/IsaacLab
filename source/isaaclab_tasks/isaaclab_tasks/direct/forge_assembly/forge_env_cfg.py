@@ -79,6 +79,13 @@ class CtrlCfg:
     kp_null: float = 10.0
     kd_null: float = 6.3246
 
+    # Joint-space regularization for non-redundant arms (6-DOF).
+    # Light PD torque pulling joints toward default positions.
+    # Only used when num_arm_joints <= 6 (no null-space available).
+    kp_joint_reg: float = 0.0   # 0 = disabled (7-DOF uses null-space instead)
+    kd_joint_reg: float = 0.0
+    joint_reg_indices: list = [0]  # Which joints to regularize (default: q1/base only)
+
 
 @configclass
 class ForgeCtrlCfg(CtrlCfg):
@@ -366,14 +373,15 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
         reset_joints=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
         default_dof_pos_tensor=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
-        # UR10-specific: conservative control to prevent divergence.
-        # 6-DOF has no null-space, so impedance control directly drives all joints.
-        # Low gains prevent aggressive tracking that causes q1 to spiral.
-        pos_action_bounds=[0.03, 0.03, 0.03],  # 3cm max target offset (Franka: 5cm)
-        pos_action_threshold=[0.003, 0.003, 0.003],  # 3mm/step — very tight (Franka: 2cm)
-        rot_action_threshold=[0.03, 0.03, 0.03],  # ~1.7°/step — very tight (Franka: ~5.5°)
+        # Joint reg disabled — conflicts with 6-DOF impedance control.
+        # kp_joint_reg=0.0 (default)
+        # kd_joint_reg=0.0 (default)
+        # Conservative task-space control to prevent divergence.
+        pos_action_bounds=[0.03, 0.03, 0.03],  # 3cm (Franka: 5cm)
+        pos_action_threshold=[0.003, 0.003, 0.003],  # 3mm/step — tight (Franka: 20mm)
+        rot_action_threshold=[0.03, 0.03, 0.03],  # ~1.7°/step — tight (Franka: ~5.5°)
         default_task_prop_gains=[80.0, 80.0, 80.0, 8.0, 8.0, 8.0],  # Conservative (Franka: 565)
-        yaw_action_range=[-10.0, 90.0],  # Very narrow yaw range (was [-180, 90])
+        yaw_action_range=[-10.0, 90.0],  # Narrow yaw (Franka: [-180, 90])
     )
 
     # UR10-specific task overrides: closer fixed_asset, tighter workspace
@@ -395,7 +403,7 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
         ee_dist_reward_scale=50.0,
         ee_dist_reward_weight=5.0,
         # q1 regularization: penalize base rotation drift.
-        q1_reg_weight=2.0,
+        q1_reg_weight=5.0,
         # Reduced penalties to allow exploration.
         action_penalty_asset_scale=0.0005,  # Halved from 0.001
         action_grad_penalty_scale=0.01,     # 10x reduced from 0.1

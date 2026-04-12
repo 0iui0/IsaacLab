@@ -71,7 +71,7 @@ params:
     schedule_type: standard
     kl_threshold: 0.008
     score_to_win: 20000
-    max_epochs: 200
+    max_epochs: 500
     save_best_after: 10
     save_frequency: 100
     print_stats: True
@@ -118,6 +118,13 @@ params:
           before_mlp: True
           concat_input: True
           layer_norm: True
+
+    wandb:
+      entity: safezpa
+      project: forge-assembly
+      group: UR10-peg-insert
+      name: ur10-peg-v3-heldpos-fix
+      log_hparams: True
 
     player:
       deterministic: False
