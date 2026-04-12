@@ -67,6 +67,8 @@ class CtrlCfg:
     pos_action_threshold: list = [0.02, 0.02, 0.02]
     rot_action_threshold: list = [0.097, 0.097, 0.097]
 
+    yaw_action_range: list = [-180.0, 90.0]
+
     reset_joints: list = [1.5178e-03, -1.9651e-01, -1.4364e-03, -1.9761, -2.7717e-04, 1.7796, 7.8556e-01]
     reset_task_prop_gains: list = [300, 300, 300, 20, 20, 20]
     reset_rot_deriv_scale: float = 10.0
@@ -364,6 +366,14 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
         reset_joints=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
         default_dof_pos_tensor=[0.0, -1.712, 1.712, 0.0, -1.571, 0.0],
+        # UR10-specific: conservative control to prevent divergence.
+        # 6-DOF has no null-space, so impedance control directly drives all joints.
+        # Low gains prevent aggressive tracking that causes q1 to spiral.
+        pos_action_bounds=[0.03, 0.03, 0.03],  # 3cm max target offset (Franka: 5cm)
+        pos_action_threshold=[0.003, 0.003, 0.003],  # 3mm/step — very tight (Franka: 2cm)
+        rot_action_threshold=[0.03, 0.03, 0.03],  # ~1.7°/step — very tight (Franka: ~5.5°)
+        default_task_prop_gains=[80.0, 80.0, 80.0, 8.0, 8.0, 8.0],  # Conservative (Franka: 565)
+        yaw_action_range=[-10.0, 90.0],  # Very narrow yaw range (was [-180, 90])
     )
 
     # UR10-specific task overrides: closer fixed_asset, tighter workspace
@@ -381,6 +391,14 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
         # so contact forces are smaller than Franka's held asset (19g mass).
         contact_penalty_threshold_range=[1.0, 3.0],
         contact_penalty_scale=0.2,
+        # Direct distance reward for strong gradient signal toward target.
+        ee_dist_reward_scale=50.0,
+        ee_dist_reward_weight=5.0,
+        # q1 regularization: penalize base rotation drift.
+        q1_reg_weight=2.0,
+        # Reduced penalties to allow exploration.
+        action_penalty_asset_scale=0.0005,  # Halved from 0.001
+        action_grad_penalty_scale=0.01,     # 10x reduced from 0.1
         fixed_asset=_make_fixed_asset_cfg(
             "/World/envs/env_.*/FixedAsset",
             f"{ASSET_DIR}/factory_hole_8mm.usd",

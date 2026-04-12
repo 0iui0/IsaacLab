@@ -86,6 +86,9 @@ class ForgeTask:
     action_penalty_ee_scale: float = 0.0
     action_grad_penalty_scale: float = 0.1
     action_penalty_asset_scale: float = 0.001
+    ee_dist_reward_scale: float = 50.0
+    ee_dist_reward_weight: float = 0.0
+    q1_reg_weight: float = 0.0  # Base joint regularization (0 = disabled)
     contact_penalty_scale: float = 0.05
     delay_until_ratio: float = 0.25
     contact_penalty_threshold_range: list = [5.0, 10.0]

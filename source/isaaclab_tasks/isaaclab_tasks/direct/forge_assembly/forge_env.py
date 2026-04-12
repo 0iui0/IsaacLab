@@ -54,10 +54,17 @@ class ForgeEnv(DirectRLEnv):
 
         self.flip_quats = torch.ones((self.num_envs,), dtype=torch.float32, device=self.device)
 
+        # Debug: step counter for periodic exploration stats
+        self._debug_step_count = 0
+
         # Force sensor - body index will be set in _init_tensors after scene setup
         self.force_sensor_body_idx = None
         self.force_sensor_smooth = torch.zeros((self.num_envs, 6), device=self.device)
         self.force_sensor_world_smooth = torch.zeros((self.num_envs, 6), device=self.device)
+
+        # Peg tip / hole top positions for direct success check (fixed-peg robots)
+        self.peg_tip_pos = torch.zeros((self.num_envs, 3), device=self.device)
+        self.hole_top_pos = torch.zeros((self.num_envs, 3), device=self.device)
 
         # Dynamics randomization defaults.
         self.default_gains = torch.tensor(self.cfg.ctrl.default_task_prop_gains, device=self.device).repeat(
@@ -244,18 +251,31 @@ class ForgeEnv(DirectRLEnv):
             self.held_quat = self._held_asset.data.root_quat_w
         else:
             # Fixed-peg: compute peg center position from EE pose.
-            # The peg collision shape is part of the EE link's rigid body,
-            # so we compute the peg center from the EE pose + offset.
+            # Peg center is at peg_height/2 along peg_offset_from_ee direction from EE.
             ee_pos = self._robot.data.body_pos_w[:, self.ee_body_idx] - self.scene.env_origins
             ee_quat = self._robot.data.body_quat_w[:, self.ee_body_idx]
-            peg_offset = torch.tensor(self.profile.peg_offset_from_ee, device=self.device).unsqueeze(0).expand(
-                self.num_envs, -1
-            )
+            peg_direction = torch.tensor(self.profile.peg_offset_from_ee, device=self.device)
+            peg_center_offset = peg_direction * (self.profile.peg_height / 2)
+            peg_offset = peg_center_offset.unsqueeze(0).expand(self.num_envs, -1)
             identity_quat = (
                 torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).expand(self.num_envs, -1)
             )
             _, self.held_pos = torch_utils.tf_combine(ee_quat, ee_pos, identity_quat, peg_offset)
             self.held_quat = ee_quat
+
+            # Peg tip = held_pos + peg_height/2 along peg direction (center to tip)
+            peg_tip_offset = peg_direction * (self.profile.peg_height / 2)
+            peg_tip_offset = peg_tip_offset.unsqueeze(0).expand(self.num_envs, -1)
+            _, self.peg_tip_pos = torch_utils.tf_combine(
+                self.held_quat, self.held_pos, identity_quat, peg_tip_offset
+            )
+
+            # Hole top = fixed_pos + height along Z in hole frame
+            hole_top_local = torch.zeros((self.num_envs, 3), device=self.device)
+            hole_top_local[:, 2] = self.cfg_task.fixed_asset_cfg.height
+            _, self.hole_top_pos = torch_utils.tf_combine(
+                self.fixed_quat, self.fixed_pos, identity_quat, hole_top_local
+            )
 
         jacobians = self._robot.root_physx_view.get_jacobians()
         mass_matrices = self._robot.root_physx_view.get_generalized_mass_matrices()
@@ -287,6 +307,28 @@ class ForgeEnv(DirectRLEnv):
         self.prev_joint_pos = self.joint_pos[:, self.arm_slice].clone()
 
         self.last_update_timestamp = self._robot._data._sim_timestamp
+
+        # --- Debug: periodic exploration stats for 6-DOF robots ---
+        if self.profile.num_arm_joints == 6:
+            self._debug_step_count += 1
+            if self._debug_step_count % 150 == 0:
+                hole_pos = self.fixed_pos_obs_frame  # hole tip position
+                ee_to_hole = self.ee_pos - hole_pos
+                xy_dist = torch.norm(ee_to_hole[:, 0:2], dim=1)
+                z_dist = ee_to_hole[:, 2]
+                total_dist = torch.norm(ee_to_hole, dim=1)
+                q1_vals = self.joint_pos[:, 0]
+                # How many envs within 2cm XY of hole center
+                near_hole = (xy_dist < 0.02).sum().item()
+                print(
+                    f"[Step {self._debug_step_count:>5d}] "
+                    f"EE-hole XY: mean={xy_dist.mean():.4f} max={xy_dist.max():.4f}m | "
+                    f"Z: mean={z_dist.mean():+.4f} | "
+                    f"Total: mean={total_dist.mean():.4f} | "
+                    f"Near(<2cm): {near_hole}/{self.num_envs} | "
+                    f"|q1|: mean={q1_vals.abs().mean():.3f} max={q1_vals.abs().max():.3f} rad",
+                    flush=True,
+                )
 
         # --- FORGE-specific: noise + force sensing ---
         self._compute_forge_noise(dt)
@@ -444,7 +486,8 @@ class ForgeEnv(DirectRLEnv):
         ctrl_target_ee_preclipped_pos = fixed_pos_action_frame + pos_actions
 
         rot_actions[:, 0:2] = 0.0
-        rot_actions[:, 2] = np.deg2rad(-180.0) + np.deg2rad(270.0) * (rot_actions[:, 2] + 1.0) / 2.0
+        yaw_min, yaw_max = self.cfg.ctrl.yaw_action_range
+        rot_actions[:, 2] = np.deg2rad(yaw_min) + np.deg2rad(yaw_max - yaw_min) * (rot_actions[:, 2] + 1.0) / 2.0
 
         bolt_frame_quat = torch_utils.quat_from_euler_xyz(
             roll=rot_actions[:, 0], pitch=rot_actions[:, 1], yaw=rot_actions[:, 2]
@@ -615,6 +658,23 @@ class ForgeEnv(DirectRLEnv):
             "contact_penalty": -self.cfg_task.contact_penalty_scale,
             "success_pred_error": -self.success_pred_scale,
         }
+
+        # Direct EE-to-target distance reward for fixed-peg robots.
+        if self.profile.grasp_type == "fixed_peg" and self.cfg_task.ee_dist_reward_weight > 0:
+            ee_dist = torch.norm(self.peg_tip_pos - self.hole_top_pos, p=2, dim=-1)
+            ee_dist_reward = 1.0 / (1.0 + ee_dist * self.cfg_task.ee_dist_reward_scale)
+            rew_dict["ee_distance"] = ee_dist_reward
+            rew_scales["ee_distance"] = self.cfg_task.ee_dist_reward_weight
+
+        # q1 regularization: penalize base joint rotation from reset value.
+        if self.profile.grasp_type == "fixed_peg" and self.cfg_task.q1_reg_weight > 0:
+            q1_reset = torch.tensor(self.profile.reset_arm_joint_pos[0], device=self.device)
+            q1_current = self.joint_pos[:, 0]
+            q1_error = torch.abs(
+                (q1_current - q1_reset + math.pi) % (2 * math.pi) - math.pi
+            )
+            rew_dict["q1_reg"] = -q1_error
+            rew_scales["q1_reg"] = self.cfg_task.q1_reg_weight
         for rew_name, rew in rew_dict.items():
             rew_buf += rew_dict[rew_name] * rew_scales[rew_name]
 
@@ -712,6 +772,28 @@ class ForgeEnv(DirectRLEnv):
         """Get success mask at current timestep."""
         curr_successes = torch.zeros((self.num_envs,), dtype=torch.bool, device=self.device)
 
+        if self.profile.grasp_type == "fixed_peg":
+            # Direct check: peg tip vs hole top position
+            xy_dist = torch.linalg.vector_norm(
+                self.hole_top_pos[:, 0:2] - self.peg_tip_pos[:, 0:2], dim=1
+            )
+            is_centered = xy_dist < 0.0025  # 2.5mm XY alignment
+
+            z_disp = self.peg_tip_pos[:, 2] - self.hole_top_pos[:, 2]
+            insertion_threshold = self.cfg_task.fixed_asset_cfg.height * success_threshold
+            is_inserted = z_disp < -insertion_threshold  # Peg tip below hole top
+
+            curr_successes = torch.logical_and(is_centered, is_inserted)
+
+            if check_rot:
+                _, _, curr_yaw = torch_utils.get_euler_xyz(self.ee_quat)
+                curr_yaw = forge_utils.wrap_yaw(curr_yaw)
+                is_rotated = curr_yaw < self.cfg_task.ee_success_yaw
+                curr_successes = torch.logical_and(curr_successes, is_rotated)
+
+            return curr_successes
+
+        # Gripper-based robots: use keypoint-based success check
         held_base_pos, held_base_quat = forge_utils.get_held_base_pose(
             self.held_pos, self.held_quat, self.cfg_task.name, self.cfg_task.fixed_asset_cfg, self.num_envs, self.device
         )
