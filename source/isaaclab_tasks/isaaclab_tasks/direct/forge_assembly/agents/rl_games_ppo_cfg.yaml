@@ -122,8 +122,8 @@ params:
     wandb:
       entity: safezpa
       project: forge-assembly
-      group: UR10-peg-insert
-      name: ur10-peg-v3-heldpos-fix
+      group: Franka-peg-insert
+      name: franka-peg-baseline
       log_hparams: True
 
     player:
