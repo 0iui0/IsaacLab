@@ -263,7 +263,7 @@ class ForgeEnv(DirectRLEnv):
             peg_tip_offset = peg_direction * self.profile.peg_height
             peg_tip_offset = peg_tip_offset.unsqueeze(0).expand(self.num_envs, -1)
             identity_quat = (
-                torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).expand(self.num_envs, 1)
+                torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).expand(self.num_envs, 4)
             )
             _, self.peg_tip_pos = torch_utils.tf_combine(
                 self.held_quat, self.held_pos, identity_quat, peg_tip_offset
