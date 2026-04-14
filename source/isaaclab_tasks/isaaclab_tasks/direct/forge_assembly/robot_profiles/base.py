@@ -77,3 +77,8 @@ class RobotProfile:
 
     peg_usd_path: str | None = None
     """Optional USD path for a pre-made peg asset. If None, a cylinder is spawned dynamically."""
+
+    keypoint_axis: int = 2
+    """Axis along which keypoint offsets are spread in the held-asset local frame.
+    0=X, 1=Y, 2=Z. Must match the direction the peg/asset extends in its local frame.
+    Franka peg USD: Z-axis (2). UR10 fixed peg: X-axis (0)."""

@@ -376,11 +376,11 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
         # Joint reg disabled — conflicts with 6-DOF impedance control.
         # kp_joint_reg=0.0 (default)
         # kd_joint_reg=0.0 (default)
-        # Conservative task-space control to prevent divergence.
-        pos_action_bounds=[0.03, 0.03, 0.03],  # 3cm (Franka: 5cm)
-        pos_action_threshold=[0.003, 0.003, 0.003],  # 3mm/step — tight (Franka: 20mm)
-        rot_action_threshold=[0.03, 0.03, 0.03],  # ~1.7°/step — tight (Franka: ~5.5°)
-        default_task_prop_gains=[80.0, 80.0, 80.0, 8.0, 8.0, 8.0],  # Conservative (Franka: 565)
+        # Improved exploration speed for Z-axis descent:
+        pos_action_bounds=[0.05, 0.05, 0.10],  # Z can move 10cm (Franka: 5cm)
+        pos_action_threshold=[0.01, 0.01, 0.02],  # Z can move 20mm/step (was 3mm, Franka: 20mm)
+        rot_action_threshold=[0.05, 0.05, 0.05],  # ~2.9°/step (was 1.7°, Franka: ~5.5°)
+        default_task_prop_gains=[200.0, 200.0, 200.0, 20.0, 20.0, 20.0],  # Higher gains for better tracking (was 80)
         yaw_action_range=[-10.0, 90.0],  # Narrow yaw (Franka: [-180, 90])
     )
 
@@ -402,6 +402,10 @@ class UR10ForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
         # Direct distance reward for strong gradient signal toward target.
         ee_dist_reward_scale=50.0,
         ee_dist_reward_weight=5.0,
+        # Z-descent reward: gradient for vertical descent independent of XY alignment.
+        # Scale=100: reward=0.5 at 1cm above, reward=0.91 at 1mm above hole.
+        z_descent_reward_scale=100.0,
+        z_descent_reward_weight=10.0,
         # Insertion depth reward: gradient for pushing peg INTO the hole.
         # Normalized by hole height (25mm), so reward=1.0 when fully inserted.
         # This is the missing gradient that Franka gets via keypoint rewards.

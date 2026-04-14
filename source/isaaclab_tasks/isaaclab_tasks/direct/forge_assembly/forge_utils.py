@@ -34,10 +34,15 @@ def change_FT_frame(source_F, source_T, source_frame, target_frame):
     return target_F, target_T
 
 
-def get_keypoint_offsets(num_keypoints, device):
-    """Get uniformly-spaced keypoints along a line of unit length, centered at 0."""
+def get_keypoint_offsets(num_keypoints, device, axis=2):
+    """Get uniformly-spaced keypoints along a line of unit length, centered at 0.
+
+    Args:
+        axis: Which axis to spread keypoints along (0=X, 1=Y, 2=Z).
+              Must match the direction the peg/asset extends in its local frame.
+    """
     keypoint_offsets = torch.zeros((num_keypoints, 3), device=device)
-    keypoint_offsets[:, -1] = torch.linspace(0.0, 1.0, num_keypoints, device=device) - 0.5
+    keypoint_offsets[:, axis] = torch.linspace(0.0, 1.0, num_keypoints, device=device) - 0.5
     return keypoint_offsets
 
 

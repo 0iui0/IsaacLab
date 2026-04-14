@@ -250,22 +250,21 @@ class ForgeEnv(DirectRLEnv):
             self.held_pos = self._held_asset.data.root_pos_w - self.scene.env_origins
             self.held_quat = self._held_asset.data.root_quat_w
         else:
-            # Fixed-peg: compute peg center position from EE pose.
-            # Peg center is at peg_height/2 along peg_offset_from_ee direction from EE.
+            # Fixed-peg: compute peg base position from EE pose.
+            # Peg base sits at EE link origin (peg_offset_from_ee defines the direction).
+            # This matches Franka's held_pos which is the peg root/base position.
             ee_pos = self._robot.data.body_pos_w[:, self.ee_body_idx] - self.scene.env_origins
             ee_quat = self._robot.data.body_quat_w[:, self.ee_body_idx]
-            peg_direction = torch.tensor(self.profile.peg_offset_from_ee, device=self.device)
-            peg_center_offset = peg_direction * (self.profile.peg_height / 2)
-            peg_offset = peg_center_offset.unsqueeze(0).expand(self.num_envs, -1)
-            identity_quat = (
-                torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).expand(self.num_envs, -1)
-            )
-            _, self.held_pos = torch_utils.tf_combine(ee_quat, ee_pos, identity_quat, peg_offset)
+            self.held_pos = ee_pos  # Peg base = EE position
             self.held_quat = ee_quat
 
-            # Peg tip = held_pos + peg_height/2 along peg direction (center to tip)
-            peg_tip_offset = peg_direction * (self.profile.peg_height / 2)
+            # Peg tip = held_pos + peg_height along peg direction
+            peg_direction = torch.tensor(self.profile.peg_offset_from_ee, device=self.device)
+            peg_tip_offset = peg_direction * self.profile.peg_height
             peg_tip_offset = peg_tip_offset.unsqueeze(0).expand(self.num_envs, -1)
+            identity_quat = (
+                torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).unsqueeze(0).expand(self.num_envs, 1)
+            )
             _, self.peg_tip_pos = torch_utils.tf_combine(
                 self.held_quat, self.held_pos, identity_quat, peg_tip_offset
             )
@@ -666,6 +665,15 @@ class ForgeEnv(DirectRLEnv):
             rew_dict["ee_distance"] = ee_dist_reward
             rew_scales["ee_distance"] = self.cfg_task.ee_dist_reward_weight
 
+        # Z-descent reward: provides gradient for vertical descent independent of XY.
+        # Only for fixed-peg robots. Rewards peg_tip being closer to hole_top in Z.
+        # Scale: 100 means reward=0.5 when 1cm above, reward=0.91 when 1mm above.
+        if self.profile.grasp_type == "fixed_peg" and self.cfg_task.z_descent_reward_weight > 0:
+            z_gap = torch.clamp(self.peg_tip_pos[:, 2] - self.hole_top_pos[:, 2], min=0.0)  # positive = above hole
+            z_descent_reward = 1.0 / (1.0 + z_gap * self.cfg_task.z_descent_reward_scale)
+            rew_dict["z_descent"] = z_descent_reward
+            rew_scales["z_descent"] = self.cfg_task.z_descent_reward_weight
+
         # Insertion depth reward: gradient for pushing peg INTO the hole.
         # Measures how far the peg tip has penetrated below the hole top surface.
         # Only active for fixed-peg robots. Provides the missing gradient that
@@ -720,7 +728,9 @@ class ForgeEnv(DirectRLEnv):
 
         keypoints_held = torch.zeros((self.num_envs, self.cfg_task.num_keypoints, 3), device=self.device)
         keypoints_fixed = torch.zeros((self.num_envs, self.cfg_task.num_keypoints, 3), device=self.device)
-        offsets = forge_utils.get_keypoint_offsets(self.cfg_task.num_keypoints, self.device)
+        offsets = forge_utils.get_keypoint_offsets(
+            self.cfg_task.num_keypoints, self.device, axis=self.profile.keypoint_axis
+        )
         keypoint_offsets = offsets * self.cfg_task.keypoint_scale
         for idx, keypoint_offset in enumerate(keypoint_offsets):
             keypoints_held[:, idx] = torch_utils.tf_combine(

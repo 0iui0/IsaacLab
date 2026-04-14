@@ -88,6 +88,8 @@ class ForgeTask:
     action_penalty_asset_scale: float = 0.001
     ee_dist_reward_scale: float = 50.0
     ee_dist_reward_weight: float = 0.0
+    z_descent_reward_scale: float = 100.0  # Z-descent reward scale (higher = stronger gradient when above hole)
+    z_descent_reward_weight: float = 0.0  # Z-descent reward weight (0 = disabled)
     insertion_reward_weight: float = 0.0  # Peg insertion depth reward (0 = disabled)
     q1_reg_weight: float = 0.0  # Base joint regularization (0 = disabled)
     contact_penalty_scale: float = 0.05

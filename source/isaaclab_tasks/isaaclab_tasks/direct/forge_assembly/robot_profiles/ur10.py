@@ -92,4 +92,6 @@ UR10_FORGE_PROFILE = RobotProfile(
     # USD with ArticulationRootAPI — required for contact force reporting.
     # Uses the same factory peg as Franka's held asset.
     peg_usd_path=f"{ASSET_DIR}/factory_peg_8mm.usd",
+    # Keypoints along X-axis in EE frame (peg is along X, not Z)
+    keypoint_axis=0,
 )
