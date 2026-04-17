@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Marvin M6-S-R (7-DOF) + Force Sensor + Franka Panda Gripper combined URDF.
+     Based on marvin_m6_robotiq_2f85.urdf (correct reference) for arm and force_sensor.
+     Franka Panda gripper from franka_mimic.urdf.
+
+     Kinematic chain:
+       Base_R -> Joint1-7_R -> Link7_R -> [fixed] force_sensor -> [fixed] panda_hand
+         -> panda_finger_joint1 -> panda_leftfinger
+         -> panda_finger_joint2 -> panda_rightfinger
+         -> panda_fingertip_centered
+
+     Link7_R flange approaches -Y direction.
+-->
+<robot name="marvin_m6_panda">
+
+  <!-- ==================== M6 RIGHT ARM (7-DOF) ==================== -->
+  <!-- Joint parameters from manufacturer URDF: Marvin-M6-S-R-CCS-696-V4.0.urdf -->
+
+  <link name="Base_R">
+    <inertial>
+      <origin xyz="0.00032267 4.798E-05 0.04066353" rpy="0 0 0" />
+      <mass value="1.1962" />
+      <inertia ixx="0.00107329" ixy="-1.68E-06" ixz="-1.05E-05" iyy="0.00107003" iyz="-3.43E-06" izz="0.00127315" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Base_R.STL" /></geometry>
+      <material name="base_mat"><color rgba="0.5 0.5 0.5 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Base_R.STL" /></geometry>
+    </collision>
+  </link>
+
+  <link name="Link1_R">
+    <inertial>
+      <origin xyz="0.00002347 0.00557150 -0.03075998" rpy="0 0 0" />
+      <mass value="1.9705" />
+      <inertia ixx="0.00492293" ixy="0.00000550" ixz="0.00000193" iyy="0.00526513" iyz="0.00033232" izz="0.00188107" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link1_R.STL" /></geometry>
+      <material name="link1_mat"><color rgba="0.2 0.2 0.8 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link1_R.STL" /></geometry>
+    </collision>
+  </link>
+  <joint name="Joint1_R" type="revolute">
+    <origin xyz="0 0 0.1745" rpy="0 0 0" />
+    <parent link="Base_R" /><child link="Link1_R" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.1067" upper="3.1067" effort="108" velocity="3.1416" />
+  </joint>
+
+  <link name="Link2_R">
+    <inertial>
+      <origin xyz="0.00013483 0.06170460 0.00950639" rpy="0 0 0" />
+      <mass value="2.24398" />
+      <inertia ixx="0.01194933" ixy="0.00000336" ixz="0.00000091" iyy="0.00361581" iyz="-0.00132804" izz="0.01098356" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link2_R.STL" /></geometry>
+      <material name="link2_mat"><color rgba="0.2 0.2 0.8 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link2_R.STL" /></geometry>
+    </collision>
+  </link>
+  <joint name="Joint2_R" type="revolute">
+    <origin xyz="0 0 0" rpy="1.5708 0 0" />
+    <parent link="Link1_R" /><child link="Link2_R" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.0944" upper="2.0944" effort="108" velocity="3.1416" />
+  </joint>
+
+  <link name="Link3_R">
+    <inertial>
+      <origin xyz="0.00968562 0.00246599 -0.04627302" rpy="0 0 0" />
+      <mass value="1.9242" />
+      <inertia ixx="0.00718224" ixy="0.00004413" ixz="0.00089552" iyy="0.00762563" iyz="0.00022096" izz="0.00178597" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link3_R.STL" /></geometry>
+      <material name="link3_mat"><color rgba="0.8 0.2 0.2 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link3_R.STL" /></geometry>
+    </collision>
+  </link>
+  <joint name="Joint3_R" type="revolute">
+    <origin xyz="0 0.287 0" rpy="-1.5708 0 0" />
+    <parent link="Link2_R" /><child link="Link3_R" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.1067" upper="3.1067" effort="66" velocity="3.1416" />
+  </joint>
+
+  <link name="Link4_R">
+    <inertial>
+      <origin xyz="0.00850411 -0.04718223 0.00941509" rpy="0 0 0" />
+      <mass value="1.6085" />
+      <inertia ixx="0.00580480" ixy="-0.00066669" ixz="-0.00012722" iyy="0.00223807" iyz="0.00070523" izz="0.00533060" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link4_R.STL" /></geometry>
+      <material name="link4_mat"><color rgba="0.2 0.8 0.2 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link4_R.STL" /></geometry>
+    </collision>
+  </link>
+  <joint name="Joint4_R" type="revolute">
+    <origin xyz="0.018 0 0" rpy="-1.5708 0 3.1416" />
+    <parent link="Link3_R" /><child link="Link4_R" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.5307" upper="1.0472" effort="66" velocity="3.1416" />
+  </joint>
+
+  <link name="Link5_R">
+    <inertial>
+      <origin xyz="-0.00051127 -0.00101064 -0.11271739" rpy="0 0 0" />
+      <mass value="2.0883" />
+      <inertia ixx="0.00626603" ixy="0.00004009" ixz="-0.00005338" iyy="0.00564387" iyz="0.00006193" izz="0.00243632" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link5_R.STL" /></geometry>
+      <material name="link5_mat"><color rgba="0.2 0.2 0.8 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link5_R.STL" /></geometry>
+    </collision>
+  </link>
+  <joint name="Joint5_R" type="revolute">
+    <origin xyz="0.018 -0.314 0" rpy="-1.5708 0 3.1416" />
+    <parent link="Link4_R" /><child link="Link5_R" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.1067" upper="3.1067" effort="18" velocity="3.1416" />
+  </joint>
+
+  <link name="Link6_R">
+    <inertial>
+      <origin xyz="0.00032659 -0.00531336 0.00030182" rpy="0 0 0" />
+      <mass value="0.72496" />
+      <inertia ixx="0.00046040" ixy="-0.00000189" ixz="-0.00000083" iyy="0.00051716" iyz="-0.00000346" izz="0.00042521" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link6_R.STL" /></geometry>
+      <material name="link6_mat"><color rgba="0.8 0.2 0.2 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link6_R.STL" /></geometry>
+    </collision>
+  </link>
+  <joint name="Joint6_R" type="revolute">
+    <origin xyz="0 0 0" rpy="1.5708 -1.5708 0" />
+    <parent link="Link5_R" /><child link="Link6_R" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.0472" upper="1.0472" effort="18" velocity="3.1416" />
+  </joint>
+
+  <link name="Link7_R">
+    <inertial>
+      <origin xyz="-0.00009108 -0.03153255 0.00889371" rpy="0 0 0" />
+      <mass value="0.68606" />
+      <inertia ixx="0.00173687" ixy="-0.00000345" ixz="-0.00000116" iyy="0.00089035" iyz="0.00030680" izz="0.00139406" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link7_R.STL" /></geometry>
+      <material name="link7_mat"><color rgba="0.2 0.8 0.2 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><mesh filename="package://marvin_m6_panda/meshes/Link7_R.STL" /></geometry>
+    </collision>
+  </link>
+  <joint name="Joint7_R" type="revolute">
+    <origin xyz="0 0 0" rpy="1.5708 -1.5708 0" />
+    <parent link="Link6_R" /><child link="Link7_R" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.5708" upper="1.5708" effort="18" velocity="3.1416" />
+  </joint>
+
+  <!-- ==================== FORCE SENSOR ==================== -->
+  <!-- Virtual force sensor link between flange and gripper.
+       Link7_R flange approaches -Y direction. Offset along -Y by 0.1m.
+       Rotation rpy=[pi/2, 0, 0] maps gripper Z-axis to Link7_R -Y-axis.
+       Cylinder: 63mm diameter (radius=0.0315m), 33mm thickness (length=0.033m). -->
+
+  <link name="force_sensor">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.5" />
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><cylinder radius="0.0315" length="0.033" /></geometry>
+      <material name="sensor_mat"><color rgba="0.9 0.9 0.0 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry><cylinder radius="0.0315" length="0.033" /></geometry>
+    </collision>
+  </link>
+  <joint name="flange_to_force_sensor" type="fixed">
+    <!-- SAME as robotiq version: -Y offset, X-axis 90deg rotation -->
+    <origin xyz="0 -0.1 0" rpy="1.5708 0 0" />
+    <parent link="Link7_R" /><child link="force_sensor" />
+  </joint>
+
+  <!-- ==================== PANDA HAND ==================== -->
+  <!-- Franka Panda gripper from franka_mimic.urdf, attached to force_sensor.
+       The force_sensor's Z-axis now points along Link7_R -Y-axis (due to rotation).
+       Panda hand attaches at the end of force_sensor cylinder (half-length offset = 0.0165m). -->
+
+  <link name="panda_hand">
+    <inertial>
+      <origin xyz="-0.01 0. 0.03" rpy="0. 0. 0."/>
+      <mass value="0.73"/>
+      <inertia ixx="0.001" ixy="0." ixz="0." iyy="0.0025" iyz="0." izz="0.0017"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="1.5707964 0. 0. "/>
+      <geometry>
+        <mesh filename="package://marvin_m6_panda/meshes/panda_hand_visuals.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="package://marvin_m6_panda/meshes/panda_hand_collisions.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="force_sensor_to_gripper" type="fixed">
+    <!-- Offset along force_sensor Z-axis (half cylinder length = 0.0165m)
+         to attach panda_hand at the end of force_sensor cylinder, not at the flange. -->
+    <origin xyz="0 0 0.0165" rpy="0 0 0" />
+    <parent link="force_sensor" /><child link="panda_hand" />
+  </joint>
+
+  <!-- Panda fingers -->
+  <joint name="panda_finger_joint1" type="prismatic">
+    <origin xyz="0. 0. 0.0584" rpy="0. 0. 0."/>
+    <parent link="panda_hand"/>
+    <child link="panda_leftfinger"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="0." upper="0.04" effort="70." velocity="0.05"/>
+  </joint>
+
+  <link name="panda_leftfinger">
+    <inertial>
+      <origin xyz="0. 0.0114 0.0231" rpy="0. 0. 0."/>
+      <mass value="0.0297"/>
+      <inertia ixx="0.0000076" ixy="0." ixz="0." iyy="0.0000072" iyz="0.000001" izz="0.0000024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="package://marvin_m6_panda/meshes/panda_leftfinger_visuals.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="package://marvin_m6_panda/meshes/panda_leftfinger_collisions.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="panda_finger_joint2" type="prismatic">
+    <origin xyz="0. 0. 0.0584" rpy="3.1415927 0. 0. "/>
+    <parent link="panda_hand"/>
+    <child link="panda_rightfinger"/>
+    <axis xyz="0. 1. 0."/>
+    <limit lower="0." upper="0.04" effort="0." velocity="0.04"/>
+  </joint>
+
+  <link name="panda_rightfinger">
+    <inertial>
+      <origin xyz="0. 0.0114 0.0231" rpy="0. 0. 0."/>
+      <mass value="0.0297"/>
+      <inertia ixx="0.0000076" ixy="0." ixz="0." iyy="0.0000072" iyz="0.000001" izz="0.0000024"/>
+    </inertial>
+    <visual>
+      <origin xyz="0. 0. 0." rpy="3.1415927 0. 3.1415925"/>
+      <geometry>
+        <mesh filename="package://marvin_m6_panda/meshes/panda_rightfinger_visuals.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0. 0. 0." rpy="3.1415927 0. 3.1415925"/>
+      <geometry>
+        <mesh filename="package://marvin_m6_panda/meshes/panda_rightfinger_collisions.obj" scale="1. 1. 1."/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Virtual fingertip centered link -->
+  <joint name="panda_fingertip_centered_joint" type="fixed">
+    <origin xyz="0. 0. 0.112071" rpy="0. 0. 0."/>
+    <parent link="panda_hand"/>
+    <child link="panda_fingertip_centered"/>
+  </joint>
+
+  <link name="panda_fingertip_centered">
+    <inertial>
+      <origin xyz="0. 0. 0." rpy="0. 0. 0."/>
+      <mass value="0.000001"/>
+      <inertia ixx="0." ixy="0." ixz="0." iyy="0." iyz="0." izz="0."/>
+    </inertial>
+  </link>
+
+</robot>
