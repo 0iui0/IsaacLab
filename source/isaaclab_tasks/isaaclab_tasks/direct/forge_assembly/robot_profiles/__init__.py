@@ -6,6 +6,14 @@
 from .base import RobotProfile
 from .cr5 import CR5_FORGE_PROFILE
 from .franka import FRANKA_FORGE_PROFILE
+from .marvin import MARVIN_PANDA_FORGE_PROFILE, MARVIN_ROBOTIQ_2F85_FORGE_PROFILE
 from .ur10 import UR10_FORGE_PROFILE
 
-__all__ = ["RobotProfile", "FRANKA_FORGE_PROFILE", "UR10_FORGE_PROFILE", "CR5_FORGE_PROFILE"]
+__all__ = [
+    "RobotProfile",
+    "FRANKA_FORGE_PROFILE",
+    "UR10_FORGE_PROFILE",
+    "CR5_FORGE_PROFILE",
+    "MARVIN_PANDA_FORGE_PROFILE",
+    "MARVIN_ROBOTIQ_2F85_FORGE_PROFILE",
+]

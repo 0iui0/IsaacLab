@@ -69,3 +69,27 @@ gym.register(
         "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
     },
 )
+
+# --- Marvin M6 + Robotiq 2F-85 ---
+
+gym.register(
+    id="Isaac-ForgeAssembly-MarvinRobotiq-PegInsert-Direct-v0",
+    entry_point=f"{__name__}.forge_env:ForgeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.forge_env_cfg:MarvinForgeTaskPegInsertCfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
+    },
+)
+
+# --- Marvin M6 + Force Sensor + Franka Panda Gripper ---
+
+gym.register(
+    id="Isaac-ForgeAssembly-MarvinPanda-PegInsert-Direct-v0",
+    entry_point=f"{__name__}.forge_env:ForgeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.forge_env_cfg:MarvinPandaForgeTaskPegInsertCfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
+    },
+)

@@ -58,6 +58,16 @@ class RobotProfile:
     fingerpad_length: float = 0.0
     """Length of the fingerpad (0.017608 for Franka, 0.0 for fixed-peg)."""
 
+    ee_to_fingertip_offset: list = [0.0, 0.0, 0.0]
+    """[x, y, z] offset from ee_body to fingertip center in ee_body frame.
+
+    For Franka: ee_body = panda_fingertip_centered, so offset = [0, 0, 0].
+    For Marvin Panda with ee_body = Link7_R: fingertip is ~0.129m along Link7_R -Y,
+    so offset should be [0, -0.129, 0] (approximate).
+
+    This is used to correctly position held assets relative to the actual gripper center.
+    """
+
     # --- Grasp type ---
     grasp_type: str = "gripper"
     """How the peg is held: "gripper" (Franka) or "fixed_peg" (UR10/CR5)."""

@@ -71,8 +71,11 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
                 "panda_finger_joint1": 0.04,  # open
                 "panda_finger_joint2": 0.04,  # open (mimic joint)
             },
-            pos=(0.0, 0.0, 0.0),
-            rot=(1.0, 0.0, 0.0, 0.0),
+            # Horizontal mount: base Z → world +X (arm extends forward).
+            # 90° rotation around Y: quat=[cos(π/4), 0, sin(π/4), 0].
+            # Mounted at 30cm above the table surface.
+            pos=(0.0, 0.0, 0.3),
+            rot=(0.7071, 0.0, 0.7071, 0.0),
         ),
         actuators={
             # Marvin arm actuators (impedance control mode)
@@ -185,8 +188,8 @@ MARVIN_ROBOTIQ_2F85_FORGE_PROFILE = RobotProfile(
                 "Joint7_R": 0.0,
                 "finger_joint": 0.0,
             },
-            pos=(0.0, 0.0, 0.0),
-            rot=(1.0, 0.0, 0.0, 0.0),
+            pos=(0.0, 0.0, 0.3),
+            rot=(0.7071, 0.0, 0.7071, 0.0),
         ),
         actuators={
             "arm": ImplicitActuatorCfg(

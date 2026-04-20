@@ -15,7 +15,14 @@ from isaaclab.utils import configclass
 
 from .forge_events import randomize_dead_zone
 from .forge_tasks_cfg import ASSET_DIR, ForgeGearMesh, ForgeNutThread, ForgePegInsert, ForgeTask, _make_fixed_asset_cfg
-from .robot_profiles import CR5_FORGE_PROFILE, FRANKA_FORGE_PROFILE, UR10_FORGE_PROFILE, RobotProfile
+from .robot_profiles import (
+    CR5_FORGE_PROFILE,
+    FRANKA_FORGE_PROFILE,
+    MARVIN_PANDA_FORGE_PROFILE,
+    MARVIN_ROBOTIQ_2F85_FORGE_PROFILE,
+    UR10_FORGE_PROFILE,
+    RobotProfile,
+)
 
 # ---------------------------------------------------------------------------
 # Observation / state dimension lookup tables
@@ -253,7 +260,7 @@ class ForgeEnvCfg(DirectRLEnvCfg):
         ),
     )
 
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=128, env_spacing=2.0, clone_in_fabric=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=128, env_spacing=2.0, clone_in_fabric=False)
 
     # Robot ArticulationCfg is derived from robot_profile at runtime.
     # The environment accesses it via self.profile.robot.
@@ -303,6 +310,27 @@ class FrankaForgeTaskGearMeshCfg(ForgeTaskGearMeshCfg):
 @configclass
 class FrankaForgeTaskNutThreadCfg(ForgeTaskNutThreadCfg):
     robot_profile: RobotProfile = FRANKA_FORGE_PROFILE
+
+
+# ---------------------------------------------------------------------------
+# Robot-specific config variants: Marvin M6 + Robotiq 2F-85
+# ---------------------------------------------------------------------------
+
+
+@configclass
+class MarvinForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
+    robot_profile: RobotProfile = MARVIN_ROBOTIQ_2F85_FORGE_PROFILE
+    # Marvin has 7-DOF with null-space, same as Franka.
+    # Workspace is similar to Franka, use default peg_insert parameters.
+    # Override ctrl if needed for tuning.
+
+
+@configclass
+class MarvinPandaForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
+    """Marvin M6 + Force Sensor + Franka Panda Gripper configuration."""
+    robot_profile: RobotProfile = MARVIN_PANDA_FORGE_PROFILE
+    # Marvin has 7-DOF with null-space, same as Franka.
+    # Uses Franka Panda gripper, so actuator params match Franka profile.
 
 
 # ---------------------------------------------------------------------------

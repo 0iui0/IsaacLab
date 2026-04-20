@@ -96,38 +96,25 @@ class ForgeEnv(DirectRLEnv):
             "/World/envs/env_.*/Table", cfg, translation=(0.55, 0.0, 0.0), orientation=(0.70711, 0.0, 0.0, 0.70711)
         )
 
+        # Robot and assets - use copy_from_source=True like factory_env.py
+        # No need for manual env_0 spawn when using copy_from_source=True
+        self._robot = Articulation(self.profile.robot)
         self._fixed_asset = Articulation(self.cfg_task.fixed_asset)
 
-        # For gripper robots, the held asset is loaded from USD.
+        # Held asset for gripper robots
         if self.profile.grasp_type == "gripper":
             self._held_asset = Articulation(self.cfg_task.held_asset)
         else:
             self._held_asset = None
-
-        # For fixed-peg robots, we need the peg collision shape to be part of
-        # the EE link's rigid body when PhysX initializes the articulation.
-        # This requires: (1) spawn robot USD, (2) add peg to EE link, (3) create Articulation.
-        robot_cfg = self.profile.robot
-        if self.profile.grasp_type == "fixed_peg" and self.profile.peg_offset_from_ee is not None:
-            # Step 1: Spawn robot USD prims manually (before Articulation).
-            robot_cfg.spawn.func(
-                robot_cfg.prim_path,
-                robot_cfg.spawn,
-                translation=robot_cfg.init_state.pos,
-                orientation=robot_cfg.init_state.rot,
-            )
-            # Step 2: Spawn peg collision on the now-existing EE link.
-            self._spawn_peg_collision_on_ee()
-            # Step 3: Prevent Articulation from re-spawning (prims already exist).
-            robot_cfg.spawn = None
-
-        self._robot = Articulation(robot_cfg)
+            # For fixed-peg robots, spawn peg collision on EE link
+            if self.profile.grasp_type == "fixed_peg" and self.profile.peg_offset_from_ee is not None:
+                self._spawn_peg_collision_on_ee()
 
         if self.cfg_task.name == "gear_mesh":
             self._small_gear_asset = Articulation(self.cfg_task.small_gear_cfg)
             self._large_gear_asset = Articulation(self.cfg_task.large_gear_cfg)
 
-        self.scene.clone_environments(copy_from_source=False)
+        self.scene.clone_environments(copy_from_source=True)
         if self.device == "cpu":
             self.scene.filter_collisions()
 
@@ -165,7 +152,7 @@ class ForgeEnv(DirectRLEnv):
                       base_offset[1] * peg_height / 2,
                       base_offset[2] * peg_height / 2]
 
-        peg_prim_path = "/World/envs/env_.*/Robot/.*{}/peg".format(self.profile.ee_body_name)
+        peg_prim_path = "/World/envs/env_0/Robot/.*{}/peg".format(self.profile.ee_body_name)
         peg_cfg = sim_utils.CylinderCfg(
             radius=peg_radius,
             height=peg_height,
@@ -245,6 +232,34 @@ class ForgeEnv(DirectRLEnv):
         self.ee_quat = self._robot.data.body_quat_w[:, self.ee_body_idx]
         self.ee_linvel = self._robot.data.body_lin_vel_w[:, self.ee_body_idx]
         self.ee_angvel = self._robot.data.body_ang_vel_w[:, self.ee_body_idx]
+
+        # Compute fingertip pose from ee_body pose using ee_to_fingertip_offset.
+        # For Franka: ee_body = panda_fingertip_centered, offset = [0,0,0] (no change)
+        # For Marvin: ee_body = Link7_R, offset = [0, -0.129, 0] in Link7_R frame
+        #
+        # After this block, self.ee_pos and self.ee_quat are the CONTROL TARGET pose,
+        # which should be the fingertip center for gripper robots.
+        offset = torch.tensor(self.profile.ee_to_fingertip_offset, device=self.device)
+        if torch.norm(offset) > 1e-6:
+            # Transform offset from ee_body local frame to world frame
+            offset_world = torch_utils.quat_apply(self.ee_quat, offset.unsqueeze(0).expand(self.num_envs, -1))
+            fingertip_pos = self.ee_pos + offset_world
+            # Fingertip orientation: apply force_sensor rotation if needed
+            # For Marvin, the force_sensor adds 90° X rotation from Link7_R to gripper
+            # The force_sensor joint has rpy=[pi/2, 0, 0] which rotates X by 90°
+            # This transforms: Link7_R -Y → force_sensor Z → gripper Z (down)
+            # The fingertip should have Z pointing down (like Franka)
+            # So we apply the force_sensor rotation to ee_quat
+            force_sensor_rot = torch.tensor([0.7071, 0.7071, 0.0, 0.0], device=self.device)  # quat for 90° X
+            fingertip_quat = torch_utils.quat_mul(self.ee_quat, force_sensor_rot.unsqueeze(0).expand(self.num_envs, -1))
+            # Store original ee_body pose for reference (needed for Jacobian lookup)
+            self.ee_body_pos = self.ee_pos.clone()
+            self.ee_body_quat = self.ee_quat.clone()
+            # Replace ee_pos/ee_quat with fingertip pose for control/observations
+            self.ee_pos = fingertip_pos
+            self.ee_quat = fingertip_quat
+        # For Franka: ee_body IS the fingertip center, no transformation needed
+        # (ee_pos/ee_quat remain unchanged)
 
         if self._held_asset is not None:
             self.held_pos = self._held_asset.data.root_pos_w - self.scene.env_origins
@@ -983,6 +998,7 @@ class ForgeEnv(DirectRLEnv):
     def set_pos_inverse_kinematics(self, ctrl_target_ee_pos, ctrl_target_ee_quat, env_ids):
         """Set robot joint position using DLS IK."""
         ik_time = 0.0
+
         while ik_time < 0.25:
             pos_error, axis_angle_error = forge_control.get_pose_error(
                 ee_pos=self.ee_pos[env_ids],
@@ -1141,8 +1157,10 @@ class ForgeEnv(DirectRLEnv):
                 ctrl_target_ee_quat=hand_down_quat,
                 env_ids=bad_envs,
             )
-            pos_error = torch.linalg.norm(pos_error, dim=1) > 1e-3
-            angle_error = torch.norm(aa_error, dim=1) > 1e-3
+            pos_err_norm = torch.linalg.norm(pos_error, dim=1)
+            angle_err_norm = torch.norm(aa_error, dim=1)
+            pos_error = pos_err_norm > 5e-3
+            angle_error = angle_err_norm > 5e-2
             any_error = torch.logical_or(pos_error, angle_error)
             bad_envs = bad_envs[any_error.nonzero(as_tuple=False).squeeze(-1)]
 
@@ -1214,6 +1232,8 @@ class ForgeEnv(DirectRLEnv):
 
     def _randomize_held_asset_in_gripper(self, env_ids):
         """Position the held asset in the gripper with randomization."""
+        # NOTE: self.ee_pos and self.ee_quat are already transformed to fingertip pose
+        # in _compute_intermediate_values (via ee_to_fingertip_offset). No need to apply offset here.
         flip_z_quat = torch.tensor([0.0, 0.0, 1.0, 0.0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
         ee_flipped_quat, ee_flipped_pos = torch_utils.tf_combine(
             q1=self.ee_quat,
