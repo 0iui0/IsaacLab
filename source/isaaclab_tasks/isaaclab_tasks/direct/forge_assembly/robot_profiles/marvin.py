@@ -59,23 +59,23 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
         ),
         init_state=ArticulationCfg.InitialStateCfg(
             joint_pos={
-                # Marvin arm joints (7 DOF)
-                "Joint1_R": 0.0,
-                "Joint2_R": -1.571,
-                "Joint3_R": 1.571,
-                "Joint4_R": 0.0,
-                "Joint5_R": -1.571,
-                "Joint6_R": 0.0,
-                "Joint7_R": 0.0,
+                # Marvin arm joints (7 DOF) — IK-solved for hole-above pose.
+                "Joint1_R": -1.1349,
+                "Joint2_R": 0.6922,
+                "Joint3_R": 0.6928,
+                "Joint4_R": -1.9639,
+                "Joint5_R": -2.3329,
+                "Joint6_R": -0.5054,
+                "Joint7_R": -1.0058,
                 # Franka Panda gripper joints (2 prismatic)
                 "panda_finger_joint1": 0.04,  # open
                 "panda_finger_joint2": 0.04,  # open (mimic joint)
             },
-            # Horizontal mount: base Z → world +X (arm extends forward).
-            # 90° rotation around Y: quat=[cos(π/4), 0, sin(π/4), 0].
+            # Horizontal mount: base Z → world -Y (right arm extends to the right).
+            # 90° rotation around X: quat=[cos(π/4), sin(π/4), 0, 0].
             # Mounted at 30cm above the table surface.
             pos=(0.0, 0.0, 0.3),
-            rot=(0.7071, 0.0, 0.7071, 0.0),
+            rot=(0.7071, 0.7071, 0.0, 0.0),
         ),
         actuators={
             # Marvin arm actuators (impedance control mode)
@@ -116,10 +116,21 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
     right_finger_body_name="panda_rightfinger",
     force_sensor_body_name="Link7_R",  # Force sensor merged into Link7_R
     # --- IK / control ---
-    # Default pose: similar to Franka, adapted for 7-DOF null space
-    default_arm_joint_pos=[0.0, -0.5, 1.0, -1.0, -0.5, 1.0, 0.0],
-    reset_arm_joint_pos=[0.0, -1.571, 1.571, 0.0, -1.571, 0.0, 0.0],
-    null_space_default_pos=[0.0, -0.5, 1.0, -1.0, -0.5, 1.0, 0.0],
+    # --- IK / control ---
+    # IK-solved pose above hole at (0.20, -0.45, 0.005), within joint limits.
+    default_arm_joint_pos=[-1.1349, 0.6922, 0.6928, -1.9639, -2.3329, -0.5054, -1.0058],
+    reset_arm_joint_pos=[-1.1349, 0.6922, 0.6928, -1.9639, -2.3329, -0.5054, -1.0058],
+    null_space_default_pos=[-1.1349, 0.6922, 0.6928, -1.9639, -2.3329, -0.5054, -1.0058],
+    # IK joint limits: URDF limits from marvin_m6_panda.urdf.
+    ik_joint_limits=[
+        (-3.1067, 3.1067),  # Joint1_R
+        (-2.0944, 2.0944),  # Joint2_R
+        (0.0, 3.1067),      # Joint3_R (elbow - prevent reversal + URDF)
+        (-2.5307, 1.0472),  # Joint4_R
+        (-3.1067, 3.1067),  # Joint5_R
+        (-1.0472, 1.0472),  # Joint6_R
+        (-1.5708, 1.5708),  # Joint7_R
+    ],
     # --- End-effector geometry ---
     fingerpad_length=0.017608,  # Same as Franka
     # Offset from Link7_R to fingertip center in Link7_R frame.
@@ -189,7 +200,7 @@ MARVIN_ROBOTIQ_2F85_FORGE_PROFILE = RobotProfile(
                 "finger_joint": 0.0,
             },
             pos=(0.0, 0.0, 0.3),
-            rot=(0.7071, 0.0, 0.7071, 0.0),
+            rot=(0.7071, 0.7071, 0.0, 0.0),
         ),
         actuators={
             "arm": ImplicitActuatorCfg(
@@ -236,6 +247,15 @@ MARVIN_ROBOTIQ_2F85_FORGE_PROFILE = RobotProfile(
     default_arm_joint_pos=[0.0, -0.5, 1.0, -1.0, -0.5, 1.0, 0.0],
     reset_arm_joint_pos=[0.0, -1.571, 1.571, 0.0, -1.571, 0.0, 0.0],
     null_space_default_pos=[0.0, -0.5, 1.0, -1.0, -0.5, 1.0, 0.0],
+    ik_joint_limits=[
+        (-6.28, 6.28),  # Joint1_R
+        (-6.28, 6.28),  # Joint2_R
+        (0.0, 6.28),    # Joint3_R (elbow - prevent reversal)
+        (-6.28, 6.28),  # Joint4_R
+        (-6.28, 6.28),  # Joint5_R
+        (-6.28, 6.28),  # Joint6_R
+        (-6.28, 6.28),  # Joint7_R
+    ],
     # --- End-effector geometry ---
     fingerpad_length=0.025,
     # --- Grasp type ---

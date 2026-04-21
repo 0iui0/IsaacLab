@@ -22,7 +22,7 @@ from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
-from isaaclab.utils.math import axis_angle_from_quat
+from isaaclab.utils.math import axis_angle_from_quat, skew_symmetric_matrix
 
 from . import forge_control, forge_utils
 from .forge_env_cfg import OBS_DIM_CFG, STATE_DIM_CFG, ForgeEnvCfg
@@ -223,7 +223,7 @@ class ForgeEnv(DirectRLEnv):
     # Intermediate value computation
     # -----------------------------------------------------------------------
 
-    def _compute_intermediate_values(self, dt):
+    def _compute_intermediate_values(self, dt, update_joint_pos=True):
         """Get values computed from raw tensors. This includes adding noise."""
         self.fixed_pos = self._fixed_asset.data.root_pos_w - self.scene.env_origins
         self.fixed_quat = self._fixed_asset.data.root_quat_w
@@ -302,9 +302,27 @@ class ForgeEnv(DirectRLEnv):
         else:
             self.ee_jacobian = jacobians[:, self.ee_body_idx - 1, 0:6, self.arm_slice]
 
+        # Correct Jacobian for ee_to_fingertip_offset.
+        # The body Jacobian maps joint velocities to body-origin velocities, but
+        # the EE pose (fingertip center) is offset by r from the body origin.
+        # Standard correction: J_tip_linear = J_body_linear + skew(r_world) @ J_body_angular
+        offset = torch.tensor(self.profile.ee_to_fingertip_offset, device=self.device)
+        if torch.norm(offset) > 1e-6:
+            # Use ee_body_quat (stored before fingertip transform) to get offset in world frame
+            ee_body_quat = self.ee_body_quat if hasattr(self, "ee_body_quat") else self.ee_quat
+            r_world = torch_utils.quat_apply(ee_body_quat, offset.unsqueeze(0).expand(self.num_envs, -1))
+            skew_r = skew_symmetric_matrix(r_world)  # (N, 3, 3)
+            # ee_jacobian shape: (N, 6, num_arm_joints)
+            # Rows 0-2: linear, Rows 3-5: angular
+            J_lin = self.ee_jacobian[:, 0:3, :]  # (N, 3, num_arm_joints)
+            J_ang = self.ee_jacobian[:, 3:6, :]  # (N, 3, num_arm_joints)
+            J_lin_corrected = J_lin + torch.bmm(skew_r, J_ang)  # (N, 3, num_arm_joints)
+            self.ee_jacobian[:, 0:3, :] = J_lin_corrected
+
         self.arm_mass_matrix = mass_matrices[:, self.arm_slice, self.arm_slice]
-        self.joint_pos = self._robot.data.joint_pos.clone()
-        self.joint_vel = self._robot.data.joint_vel.clone()
+        if update_joint_pos:
+            self.joint_pos = self._robot.data.joint_pos.clone()
+            self.joint_vel = self._robot.data.joint_vel.clone()
 
         # Finite-differencing for velocities.
         self.ee_linvel_fd = (self.ee_pos - self.prev_ee_pos) / dt
@@ -1017,14 +1035,31 @@ class ForgeEnv(DirectRLEnv):
                 device=self.device,
             )
             self.joint_pos[env_ids, self.arm_slice] += delta_dof_pos[:, : self.num_arm_joints]
+            # Clamp to IK joint limits to prevent joint reversal (e.g. elbow).
+            if self.profile.ik_joint_limits is not None:
+                lo = torch.tensor([l[0] for l in self.profile.ik_joint_limits], device=self.device)
+                hi = torch.tensor([l[1] for l in self.profile.ik_joint_limits], device=self.device)
+                self.joint_pos[env_ids, self.arm_slice] = torch.clamp(
+                    self.joint_pos[env_ids, self.arm_slice], min=lo, max=hi
+                )
             self.joint_vel[env_ids, :] = torch.zeros_like(self.joint_pos[env_ids])
 
             self.ctrl_target_joint_pos[env_ids, self.arm_slice] = self.joint_pos[env_ids, self.arm_slice]
             self._robot.write_joint_state_to_sim(self.joint_pos, self.joint_vel)
             self._robot.set_joint_position_target(self.ctrl_target_joint_pos)
 
-            self.step_sim_no_action()
+            self.step_sim_no_action(update_joint_pos=False)
             ik_time += self.physics_dt
+
+        # Recompute error after final step_sim to get accurate final state.
+        pos_error, axis_angle_error = forge_control.get_pose_error(
+            ee_pos=self.ee_pos[env_ids],
+            ee_quat=self.ee_quat[env_ids],
+            ctrl_target_ee_pos=ctrl_target_ee_pos[env_ids],
+            ctrl_target_ee_quat=ctrl_target_ee_quat[env_ids],
+            jacobian_type="geometric",
+            rot_error_type="axis_angle",
+        )
 
         return pos_error, axis_angle_error
 
@@ -1172,7 +1207,13 @@ class ForgeEnv(DirectRLEnv):
             )
             ik_attempt += 1
 
-        self.step_sim_no_action()
+        # Re-write IK result to sim so the physics step doesn't drift the robot
+        # (Marvin has stiffness=0/damping=0, so joints drift under gravity).
+        self._robot.write_joint_state_to_sim(self.joint_pos, self.joint_vel)
+        self._robot.set_joint_position_target(self.ctrl_target_joint_pos)
+        self.sim.step(render=False)
+        self.scene.update(dt=self.physics_dt)
+        self._compute_intermediate_values(dt=self.physics_dt)
 
         # Add flanking gears for gear_mesh.
         if self.cfg_task.name == "gear_mesh" and self.cfg_task.add_flanking_gears:
@@ -1278,12 +1319,12 @@ class ForgeEnv(DirectRLEnv):
     # Sim helpers
     # -----------------------------------------------------------------------
 
-    def step_sim_no_action(self):
+    def step_sim_no_action(self, update_joint_pos=True):
         """Step the simulation without an action."""
         self.scene.write_data_to_sim()
         self.sim.step(render=False)
         self.scene.update(dt=self.physics_dt)
-        self._compute_intermediate_values(dt=self.physics_dt)
+        self._compute_intermediate_values(dt=self.physics_dt, update_joint_pos=update_joint_pos)
 
     # -----------------------------------------------------------------------
     # Logging

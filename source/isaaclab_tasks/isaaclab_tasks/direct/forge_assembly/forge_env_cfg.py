@@ -329,8 +329,27 @@ class MarvinForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
 class MarvinPandaForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     """Marvin M6 + Force Sensor + Franka Panda Gripper configuration."""
     robot_profile: RobotProfile = MARVIN_PANDA_FORGE_PROFILE
-    # Marvin has 7-DOF with null-space, same as Franka.
-    # Uses Franka Panda gripper, so actuator params match Franka profile.
+
+    # Override ctrl for Marvin: use IK-solved reset joints.
+    ctrl: ForgeCtrlCfg = ForgeCtrlCfg(
+        reset_joints=[-1.1349, 0.6922, 0.6928, -1.9639, -2.3329, -0.5054, -1.0058],
+        default_dof_pos_tensor=[-1.1349, 0.6922, 0.6928, -1.9639, -2.3329, -0.5054, -1.0058],
+    )
+
+    # Base at (0, 0, 0.3) with X-axis rotation → arm extends -Y (right).
+    # Hole uniformly randomized in X=[0.2,0.4] Y=[-0.35,-0.15].
+    # Center=(0.3, -0.25), half-range=(0.1, 0.1).
+    task = ForgePegInsert(
+        fixed_asset=_make_fixed_asset_cfg(
+            "/World/envs/env_.*/FixedAsset",
+            f"{ASSET_DIR}/factory_hole_8mm.usd",
+            0.05,
+            pos=(0.3, -0.25, 0.005),
+        ),
+        fixed_asset_init_pos_noise=[0.10, 0.10, 0.005],
+        hand_init_pos=[0.0, 0.0, 0.06],
+        hand_init_pos_noise=[0.015, 0.015, 0.008],
+    )
 
 
 # ---------------------------------------------------------------------------

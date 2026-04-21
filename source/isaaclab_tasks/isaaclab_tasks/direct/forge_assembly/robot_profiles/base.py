@@ -54,6 +54,14 @@ class RobotProfile:
     null_space_default_pos: list = []
     """Default joint positions for null-space controller target."""
 
+    ik_joint_limits: list | None = None
+    """Per-joint (min, max) limits clamped during IK iteration to prevent joint reversal.
+
+    Example for 7-DOF arm: [(−6.28, 6.28), (−6.28, 6.28), (0.0, 6.28), ...]
+    Set to None to skip clamping (uses URDF limits). Only needs to constrain
+    joints prone to reversal (e.g. elbow joint).
+    """
+
     # --- End-effector geometry ---
     fingerpad_length: float = 0.0
     """Length of the fingerpad (0.017608 for Franka, 0.0 for fixed-peg)."""
