@@ -337,16 +337,15 @@ class MarvinPandaForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
     )
 
     # Base at (0, 0, 0.3) with X-axis rotation → arm extends -Y (right).
-    # Hole uniformly randomized in X=[0.2,0.4] Y=[-0.35,-0.15].
-    # Center=(0.3, -0.25), half-range=(0.1, 0.1).
+    # Hole placed in front-right, on the table, within joint limits.
     task = ForgePegInsert(
         fixed_asset=_make_fixed_asset_cfg(
             "/World/envs/env_.*/FixedAsset",
             f"{ASSET_DIR}/factory_hole_8mm.usd",
             0.05,
-            pos=(0.3, -0.25, 0.005),
+            pos=(0.40, -0.2, 0.005),
         ),
-        fixed_asset_init_pos_noise=[0.10, 0.10, 0.005],
+        fixed_asset_init_pos_noise=[0.1, 0.1, 0.01],
         hand_init_pos=[0.0, 0.0, 0.06],
         hand_init_pos_noise=[0.015, 0.015, 0.008],
     )

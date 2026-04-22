@@ -100,3 +100,8 @@ class RobotProfile:
     """Axis along which keypoint offsets are spread in the held-asset local frame.
     0=X, 1=Y, 2=Z. Must match the direction the peg/asset extends in its local frame.
     Franka peg USD: Z-axis (2). UR10 fixed peg: X-axis (0)."""
+
+    # --- Visual-only props (no physics, just rendering) ---
+    visual_assets: dict[str, tuple[str, tuple[float, float, float]]] | None = None
+    """Visual-only USD assets to spawn in the scene. Dict of {prim_name: (usd_path, (x, y, z))}.
+    These are spawned as static Xform prims with no collision or rigid body."""

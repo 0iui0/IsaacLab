@@ -10,6 +10,7 @@ the RobotProfile abstraction.
 """
 
 import math
+import os
 
 import carb
 import numpy as np
@@ -22,6 +23,8 @@ from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+
+_DIR = os.path.dirname(os.path.abspath(__file__))
 from isaaclab.utils.math import axis_angle_from_quat, skew_symmetric_matrix
 
 from . import forge_control, forge_utils
@@ -95,6 +98,33 @@ class ForgeEnv(DirectRLEnv):
         cfg.func(
             "/World/envs/env_.*/Table", cfg, translation=(0.55, 0.0, 0.0), orientation=(0.70711, 0.0, 0.0, 0.70711)
         )
+
+        # Visual-only props from robot profile (no physics, just rendering).
+        # STL/OBJ files are converted to USD on first run via MeshConverter.
+        if self.profile.visual_assets:
+            from isaaclab.sim.converters import MeshConverter, MeshConverterCfg
+
+            for name, (asset_path, pos) in self.profile.visual_assets.items():
+                if not os.path.isfile(asset_path):
+                    continue
+                # If source is STL/OBJ, convert to USD (cached next to source).
+                if asset_path.lower().endswith((".stl", ".obj", ".fbx")):
+                    usd_path = os.path.splitext(asset_path)[0] + ".usd"
+                    if not os.path.isfile(usd_path):
+                        usd_dir = os.path.dirname(usd_path)
+                        usd_name = os.path.basename(usd_path)
+                        mc_cfg = MeshConverterCfg(
+                            asset_path=asset_path,
+                            usd_dir=usd_dir,
+                            usd_file_name=usd_name,
+                            make_instanceable=False,
+                            scale=(0.001, 0.001, 0.001),  # mm -> m
+                            rotation = (0.7071, 0.0, 0.0, 0.7071)   # (w, x, y, z)
+                        )
+                        MeshConverter(mc_cfg)
+                    asset_path = usd_path
+                va_cfg = sim_utils.UsdFileCfg(usd_path=asset_path)
+                va_cfg.func(f"/World/envs/env_.*/{name}", va_cfg, translation=pos)
 
         # Robot and assets - use copy_from_source=True like factory_env.py
         # No need for manual env_0 spawn when using copy_from_source=True

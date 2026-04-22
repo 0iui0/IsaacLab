@@ -118,13 +118,5 @@ params:
           before_mlp: True
           concat_input: True
           layer_norm: True
-
-    wandb:
-      entity: safezpa
-      project: forge-assembly
-      group: Franka-peg-insert
-      name: franka-peg-baseline
-      log_hparams: True
-
     player:
       deterministic: False

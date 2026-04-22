@@ -17,6 +17,8 @@ _LOCAL_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..
 _LOCAL_ASSET_DIR = os.path.join(_LOCAL_ROOT, "robots", "marvin")
 ASSET_DIR = _LOCAL_ASSET_DIR if os.path.isdir(_LOCAL_ASSET_DIR) else f"{ISAACLAB_NUCLEUS_DIR}/Robots/marvin"
 
+_FORGE_ASSET_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "assets"))
+
 
 # ============================================================================
 # Marvin M6 + Force Sensor + Franka Panda Gripper Profile
@@ -74,7 +76,7 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
             # Horizontal mount: base Z → world -Y (right arm extends to the right).
             # 90° rotation around X: quat=[cos(π/4), sin(π/4), 0, 0].
             # Mounted at 30cm above the table surface.
-            pos=(0.0, 0.0, 0.3),
+            pos=(0.0, -0.234, 0.405),
             rot=(0.7071, 0.7071, 0.0, 0.0),
         ),
         actuators={
@@ -153,6 +155,13 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
     peg_radius=0.0,
     peg_height=0.0,
     peg_material=None,
+    # --- Visual-only assets ---
+    visual_assets={
+        "upper_body": (
+            f"{_FORGE_ASSET_DIR}/stl/000-upper-body.STL",
+            (0.0, 0.0, 0.0),  # translation relative to env origin
+        ),
+    },
 )
 
 
