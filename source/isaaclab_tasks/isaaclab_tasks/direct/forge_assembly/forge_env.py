@@ -21,6 +21,9 @@ import isaacsim.core.utils.torch as torch_utils
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation, ArticulationCfg
 from isaaclab.envs import DirectRLEnv
+from isaaclab.markers import VisualizationMarkers
+from isaaclab.markers.visualization_markers import VisualizationMarkersCfg
+from isaaclab.sensors import ContactSensor, ContactSensorCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
@@ -184,6 +187,46 @@ class ForgeEnv(DirectRLEnv):
             self.scene.articulations["small_gear"] = self._small_gear_asset
             self.scene.articulations["large_gear"] = self._large_gear_asset
 
+        # Contact sensor on robot EE for force data — no built-in debug_vis.
+        _ENV_RE = "/World/envs/env_.*"
+        contact_cfg = ContactSensorCfg(
+            prim_path=f"{_ENV_RE}/Robot/.*",
+            debug_vis=False,
+        )
+        self._contact_sensor = ContactSensor(contact_cfg)
+        self.scene.sensors["contact_ee"] = self._contact_sensor
+
+        # XYZ force component markers using CylinderCfg (proven to work).
+        # Contact force: Red=X, Green=Y, Blue=Z
+        # F/T sensor: Orange=X, Cyan=Y, Purple=Z
+        self._force_viz = {}
+        self._ft_viz = {}
+        colors_contact = {"x": (1.0, 0.0, 0.0), "y": (0.0, 1.0, 0.0), "z": (0.0, 0.0, 1.0)}
+        colors_ft = {"x": (1.0, 0.5, 0.0), "y": (0.0, 1.0, 0.5), "z": (0.5, 0.0, 1.0)}
+        for axis in ("x", "y", "z"):
+            self._force_viz[axis] = VisualizationMarkers(
+                VisualizationMarkersCfg(
+                    prim_path=f"/Visuals/CF_{axis.upper()}",
+                    markers={
+                        "shaft": sim_utils.CylinderCfg(
+                            radius=0.004, height=1.0, axis="X",
+                            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=colors_contact[axis]),
+                        ),
+                    },
+                )
+            )
+            self._ft_viz[axis] = VisualizationMarkers(
+                VisualizationMarkersCfg(
+                    prim_path=f"/Visuals/FT_{axis.upper()}",
+                    markers={
+                        "shaft": sim_utils.CylinderCfg(
+                            radius=0.003, height=1.0, axis="X",
+                            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=colors_ft[axis]),
+                        ),
+                    },
+                )
+            )
+
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
 
@@ -256,13 +299,14 @@ class ForgeEnv(DirectRLEnv):
             self.left_finger_body_idx = self._robot.body_names.index(self.profile.left_finger_body_name)
             self.right_finger_body_idx = self._robot.body_names.index(self.profile.right_finger_body_name)
 
-        # Force sensor body index - for fixed-peg robots, the peg collision shape
-        # is part of the EE link's rigid body (spawned before articulation init),
-        # so contact forces on the peg are reported through the EE link's joint force.
+        # Force sensor body index
         if self.profile.grasp_type == "fixed_peg":
             self.force_sensor_body_idx = self.ee_body_idx
         elif self.profile.force_sensor_body_name is not None:
-            self.force_sensor_body_idx = self._robot.body_names.index(self.profile.force_sensor_body_name)
+            if self.profile.force_sensor_body_name in self._robot.body_names:
+                self.force_sensor_body_idx = self._robot.body_names.index(self.profile.force_sensor_body_name)
+            else:
+                self.force_sensor_body_idx = None
         else:
             self.force_sensor_body_idx = None
 
@@ -283,6 +327,9 @@ class ForgeEnv(DirectRLEnv):
 
     def _compute_intermediate_values(self, dt, update_joint_pos=True):
         """Get values computed from raw tensors. This includes adding noise."""
+        # Update contact sensor data (force arrows drawn at end of this method).
+        self._contact_sensor.update(dt, force_recompute=True)
+
         self.fixed_pos = self._fixed_asset.data.root_pos_w - self.scene.env_origins
         self.fixed_quat = self._fixed_asset.data.root_quat_w
 
@@ -480,6 +527,75 @@ class ForgeEnv(DirectRLEnv):
             self.noisy_force = self.force_sensor_smooth[:, 0:3] + force_noise
         else:
             self.noisy_force = torch.zeros((self.num_envs, 3), device=self.device)
+
+        # Draw force visualization arrows after all sensor data is updated.
+        if self.force_sensor_body_idx is not None or self._contact_sensor.is_initialized:
+            self._draw_force_arrows()
+
+    # -----------------------------------------------------------------------
+    # Force-arrow debug visualization
+    # -----------------------------------------------------------------------
+
+    def _draw_force_arrows(self):
+        """Draw XYZ force components as colored cylinders at EE position."""
+        ee_pos = self._robot.data.body_pos_w[:, self.ee_body_idx]  # (N, 3)
+
+        # ContactSensor net forces summed across all bodies per env
+        contact_force = self._contact_sensor.data.net_forces_w.sum(dim=1)  # (N, 3)
+        self._draw_xyz(self._force_viz, contact_force, ee_pos, scale=0.01)
+
+        # F/T sensor force in world frame
+        if self.force_sensor_body_idx is not None:
+            ft_force = self.force_sensor_world_smooth[:, 0:3]  # (N, 3)
+            self._draw_xyz(self._ft_viz, ft_force, ee_pos, scale=0.01)
+        else:
+            z = torch.zeros((self.num_envs, 3), device=self.device)
+            q = torch.zeros((self.num_envs, 4), device=self.device)
+            q[:, 0] = 1.0
+            for viz in self._ft_viz.values():
+                viz.visualize(translations=ee_pos, orientations=q, scales=z)
+
+    def _draw_xyz(self, viz_dict, forces, positions, scale=0.01):
+        """Draw each force component as a cylinder along its world axis.
+
+        CylinderCfg(axis="X") creates a cylinder along X.
+        We rotate: X→Y by 90° around Z, X→Z by -90° around Y.
+        Negative component = flip 180° around perpendicular axis.
+        """
+        N = self.num_envs
+        # Pre-compute base orientations for each axis (wxyz)
+        # X-axis: identity [1,0,0,0]
+        # Y-axis: rotate X→Y = 90° around Z = [cos45, 0,0, sin45]
+        # Z-axis: rotate X→Z = -90° around Y = [cos45, 0,-sin45, 0]
+        base_quats = {
+            "x": torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device).expand(N, -1).clone(),
+            "y": torch.tensor([0.7071, 0.0, 0.0, 0.7071], device=self.device).expand(N, -1).clone(),
+            "z": torch.tensor([0.7071, 0.0, -0.7071, 0.0], device=self.device).expand(N, -1).clone(),
+        }
+        # Flip quaternions for negative values (180° rotation)
+        flip_quats = {
+            "x": torch.tensor([0.0, 0.0, 0.0, 1.0], device=self.device).expand(N, -1).clone(),  # 180° Z
+            "y": torch.tensor([0.0, 0.0, 1.0, 0.0], device=self.device).expand(N, -1).clone(),  # 180° Y
+            "z": torch.tensor([0.0, 1.0, 0.0, 0.0], device=self.device).expand(N, -1).clone(),  # 180° X
+        }
+
+        for i, axis in enumerate(("x", "y", "z")):
+            comp = forces[:, i]  # (N,)
+            abs_c = comp.abs()
+
+            # Scale: X=length, Y=Z=1.0
+            s = torch.zeros((N, 3), device=self.device)
+            s[:, 0] = abs_c * scale
+            s[:, 1] = 1.0
+            s[:, 2] = 1.0
+            s[abs_c < 0.05] = 0.0  # hide near-zero
+
+            # Orientation: flip for negative
+            neg = comp < 0
+            quat = base_quats[axis].clone()
+            quat[neg] = flip_quats[axis][neg]
+
+            viz_dict[axis].visualize(translations=positions, orientations=quat, scales=s)
 
     # -----------------------------------------------------------------------
     # Observations
