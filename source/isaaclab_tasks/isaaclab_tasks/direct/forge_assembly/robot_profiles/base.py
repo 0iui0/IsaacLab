@@ -102,6 +102,10 @@ class RobotProfile:
     Franka peg USD: Z-axis (2). UR10 fixed peg: X-axis (0)."""
 
     # --- Visual-only props (no physics, just rendering) ---
-    visual_assets: dict[str, tuple[str, tuple[float, float, float]]] | None = None
-    """Visual-only USD assets to spawn in the scene. Dict of {prim_name: (usd_path, (x, y, z))}.
-    These are spawned as static Xform prims with no collision or rigid body."""
+    visual_assets: dict[str, tuple] | None = None
+    """Visual-only USD assets to spawn in the scene. Dict of {prim_name: (usd_path, (x,y,z)[, (w,x,y,z)])}.
+    Optional third element is orientation quaternion. Spawned as static Xform, no collision."""
+
+    # --- Left arm (visual-only articulation) ---
+    left_arm: ArticulationCfg | None = None
+    """Optional left arm Articulation. Kinematic-only, does not participate in training."""

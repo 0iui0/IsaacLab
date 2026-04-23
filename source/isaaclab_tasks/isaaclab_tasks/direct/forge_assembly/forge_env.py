@@ -131,6 +131,34 @@ class ForgeEnv(DirectRLEnv):
         self._robot = Articulation(self.profile.robot)
         self._fixed_asset = Articulation(self.cfg_task.fixed_asset)
 
+        # Left arm (mirrored visual-only articulation, kinematic)
+        if self.profile.left_arm is not None:
+            # Auto-convert URDF to USD on first run (output alongside URDF for mesh resolution).
+            usd_path = self.profile.left_arm.spawn.usd_path
+            if not os.path.isfile(usd_path):
+                urdf_dir = os.path.join(_DIR, "assets/urdf/marvin_m6_left")
+                urdf_file = os.path.join(urdf_dir, "marvin_m6_left.urdf")
+                if os.path.isfile(urdf_file):
+                    from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
+
+                    uc_cfg = UrdfConverterCfg(
+                        asset_path=urdf_file,
+                        usd_dir=urdf_dir,
+                        usd_file_name="marvin_m6_left.usd",
+                        fix_base=True,
+                        merge_fixed_joints=True,
+                        make_instanceable=False,
+                        joint_drive=UrdfConverterCfg.JointDriveCfg(
+                            drive_type="force",
+                            target_type="position",
+                            gains=UrdfConverterCfg.JointDriveCfg.PDGainsCfg(stiffness=0.0, damping=0.0),
+                        ),
+                    )
+                    UrdfConverter(uc_cfg)
+            self._left_arm = Articulation(self.profile.left_arm)
+        else:
+            self._left_arm = None
+
         # Held asset for gripper robots
         if self.profile.grasp_type == "gripper":
             self._held_asset = Articulation(self.cfg_task.held_asset)
@@ -921,6 +949,14 @@ class ForgeEnv(DirectRLEnv):
 
         self._set_assets_to_default_pose(env_ids)
         self._set_robot_to_default_pose(joints=self.cfg.ctrl.reset_joints, env_ids=env_ids)
+
+        # Reset left arm to default pose (visual-only)
+        if self._left_arm is not None:
+            left_default_pos = self._left_arm.data.default_joint_pos[env_ids].clone()
+            left_default_vel = torch.zeros_like(left_default_pos)
+            self._left_arm.write_joint_state_to_sim(left_default_pos, left_default_vel, env_ids=env_ids)
+            self._left_arm.reset()
+
         self.step_sim_no_action()
 
         self.randomize_initial_state(env_ids)

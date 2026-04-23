@@ -75,7 +75,7 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
             },
             # Horizontal mount: base Z → world -Y (right arm extends to the right).
             # 90° rotation around X: quat=[cos(π/4), sin(π/4), 0, 0].
-            # Mounted at 30cm above the table surface.
+            # Mounted at 40.5cm above the table surface.
             pos=(0.0, -0.234, 0.405),
             rot=(0.7071, 0.7071, 0.0, 0.0),
         ),
@@ -159,9 +159,45 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
     visual_assets={
         "upper_body": (
             f"{_FORGE_ASSET_DIR}/stl/000-upper-body.STL",
-            (0.0, 0.0, 0.0),  # translation relative to env origin
+            (0.0, 0.0, 0.0),
         ),
     },
+    # --- Left arm (from left-arm URDF, kinematic visual-only) ---
+    left_arm=ArticulationCfg(
+        prim_path="/World/envs/env_.*/LeftArm",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=f"{_FORGE_ASSET_DIR}/urdf/marvin_m6_left/marvin_m6_left.usd",
+            visual_material=sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(0.95, 0.95, 0.95),
+            ),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                disable_gravity=True,
+            ),
+            collision_props=sim_utils.CollisionPropertiesCfg(
+                collision_enabled=False,
+            ),
+        ),
+        init_state=ArticulationCfg.InitialStateCfg(
+            joint_pos={
+                "Joint1_L": 1.1349,   # negated (mirror)
+                "Joint2_L": -0.8667,  # negated + 10° down
+                "Joint3_L": -0.1928,  # negated (mirror)
+                "Joint4_L": -1.9639,
+                "Joint5_L": 2.3329,   # negated (mirror)
+                "Joint6_L": -0.5054,
+                "Joint7_L": 1.0058,   # negated (mirror)
+            },
+            pos=(0.0, 0.234, 0.405),
+            rot=(0.7071, -0.7071, 0.0, 0.0),
+        ),
+        actuators={
+            "arm": ImplicitActuatorCfg(
+                joint_names_expr=["Joint[1-7]_L"],
+                stiffness=0.0,
+                damping=0.0,
+            ),
+        },
+    ),
 )
 
 
