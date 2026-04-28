@@ -32,7 +32,69 @@ from isaaclab.utils.math import axis_angle_from_quat, skew_symmetric_matrix
 
 from . import forge_control, forge_utils
 from .forge_env_cfg import OBS_DIM_CFG, STATE_DIM_CFG, ForgeEnvCfg
+from .forge_tasks_cfg import ASSET_PAIRS
 from .robot_profiles import RobotProfile
+
+
+def _ensure_usd(asset_path: str) -> str:
+    """Convert STL to USD if needed, returning the USD path.
+
+    Uses MeshConverter for geometry, then creates a wrapper USD that matches
+    the factory asset structure:
+      Root (Xform)                     <- defaultPrim
+        asset_name (Xform)             <- ArticulationRootAPI + RigidBodyAPI
+          mesh (referenced geometry)    <- CollisionAPI
+    """
+    if not asset_path.lower().endswith(".stl"):
+        return asset_path
+    if not os.path.isfile(asset_path):
+        return asset_path
+    usd_path = os.path.splitext(asset_path)[0] + ".usd"
+    if os.path.isfile(usd_path):
+        return usd_path
+
+    from pxr import Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema
+    from isaaclab.sim import MeshConverter, MeshConverterCfg
+
+    # Step 1: Convert STL to mesh geometry USD
+    mesh_usd_name = os.path.splitext(os.path.basename(asset_path))[0] + "_mesh.usd"
+    mc_cfg = MeshConverterCfg(
+        asset_path=asset_path,
+        usd_dir=os.path.dirname(usd_path),
+        usd_file_name=mesh_usd_name,
+        make_instanceable=False,
+        scale=(0.001, 0.001, 0.001),  # mm -> m
+    )
+    MeshConverter(mc_cfg)
+    mesh_usd_path = os.path.join(os.path.dirname(usd_path), mesh_usd_name)
+
+    # Step 2: Create wrapper USD matching factory asset structure
+    stage = Usd.Stage.CreateNew(usd_path)
+    asset_name = os.path.splitext(os.path.basename(asset_path))[0].replace("-", "_")
+
+    # Root Xform (pure container, defaultPrim)
+    root = UsdGeom.Xform.Define(stage, "/Root")
+    stage.SetDefaultPrim(root.GetPrim())
+
+    # Link Xform — has ArticulationRootAPI + RigidBodyAPI (like factory peg)
+    link_path = f"/Root/{asset_name}"
+    link_xform = UsdGeom.Xform.Define(stage, link_path)
+    link_prim = link_xform.GetPrim()
+    UsdPhysics.ArticulationRootAPI.Apply(link_prim)
+    UsdPhysics.RigidBodyAPI.Apply(link_prim)
+
+    # Mesh child — references the geometry, has CollisionAPI
+    mesh_path = f"{link_path}/mesh"
+    mesh_prim = stage.DefinePrim(mesh_path)
+    mesh_prim.GetReferences().AddReference(Sdf.Reference(assetPath=mesh_usd_path))
+    UsdPhysics.CollisionAPI.Apply(mesh_prim)
+
+    # Contact report on the link (rigid body level)
+    cr_api = PhysxSchema.PhysxContactReportAPI.Apply(link_prim)
+    cr_api.CreateThresholdAttr().Set(0.0)
+
+    stage.GetRootLayer().Save()
+    return usd_path
 
 
 class ForgeEnv(DirectRLEnv):
@@ -72,6 +134,9 @@ class ForgeEnv(DirectRLEnv):
         self.peg_tip_pos = torch.zeros((self.num_envs, 3), device=self.device)
         self.hole_top_pos = torch.zeros((self.num_envs, 3), device=self.device)
 
+        # Multi-asset pair: per-env index into ASSET_PAIRS
+        self.asset_pair_idx = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+
         # Dynamics randomization defaults.
         self.default_gains = torch.tensor(self.cfg.ctrl.default_task_prop_gains, device=self.device).repeat(
             (self.num_envs, 1)
@@ -92,6 +157,24 @@ class ForgeEnv(DirectRLEnv):
     # -----------------------------------------------------------------------
     # Scene setup
     # -----------------------------------------------------------------------
+
+    @staticmethod
+    def _replace_usd_path(cfg: ArticulationCfg, usd_path: str) -> ArticulationCfg:
+        """Return a copy of ArticulationCfg with the spawn usd_path replaced."""
+        import copy
+        new_cfg = copy.deepcopy(cfg)
+        new_cfg.spawn.usd_path = usd_path
+        return new_cfg
+
+    @staticmethod
+    def _resolve_art_cfg(cfg: ArticulationCfg, prim_path: str) -> ArticulationCfg:
+        """Return a copy of ArticulationCfg with USD path resolved (STL→USD) and prim_path set."""
+        import copy
+        new_cfg = copy.deepcopy(cfg)
+        usd = _ensure_usd(new_cfg.spawn.usd_path)
+        new_cfg.spawn.usd_path = usd
+        new_cfg.prim_path = prim_path
+        return new_cfg
 
     def _setup_scene(self):
         """Initialize simulation scene."""
@@ -132,7 +215,48 @@ class ForgeEnv(DirectRLEnv):
         # Robot and assets - use copy_from_source=True like factory_env.py
         # No need for manual env_0 spawn when using copy_from_source=True
         self._robot = Articulation(self.profile.robot)
-        self._fixed_asset = Articulation(self.cfg_task.fixed_asset)
+
+        # Multi-asset support: spawn all registered asset pairs for peg_insert.
+        # For non-peg_insert tasks (gear_mesh, nut_thread), use the single task config.
+        self._num_asset_pairs = len(ASSET_PAIRS) if self.cfg_task.name == "peg_insert" else 1
+        self._fixed_assets = []  # list of Articulation, one per pair
+        self._held_assets = []   # list of Articulation or None, one per pair
+
+        if self._num_asset_pairs > 1:
+            # Spawn all asset pairs. Pair 0 uses standard prim paths (no suffix)
+            # so event configs referencing "held_asset"/"fixed_asset" still work.
+            for i, pair in enumerate(ASSET_PAIRS):
+                suffix = f"_{i}" if i > 0 else ""
+                fixed_cfg = self._resolve_art_cfg(pair["fixed_art"], f"/World/envs/env_.*/FixedAsset{suffix}")
+                fixed_cfg.init_state.pos = self.cfg_task.fixed_asset.init_state.pos
+                self._fixed_assets.append(Articulation(fixed_cfg))
+                if self.profile.grasp_type == "gripper":
+                    held_cfg = self._resolve_art_cfg(pair["held_art"], f"/World/envs/env_.*/HeldAsset{suffix}")
+                    self._held_assets.append(Articulation(held_cfg))
+                else:
+                    self._held_assets.append(None)
+        else:
+            # Single-asset path: use B002-1075-81A pair (index 1)
+            pair = ASSET_PAIRS[1] if len(ASSET_PAIRS) > 1 else ASSET_PAIRS[0]
+            fixed_asset_cfg = pair["fixed_art"]
+            # Inherit position from task config (robot-specific placement)
+            fixed_asset_cfg.init_state.pos = self.cfg_task.fixed_asset.init_state.pos
+            fixed_usd = _ensure_usd(fixed_asset_cfg.spawn.usd_path)
+            if fixed_usd != fixed_asset_cfg.spawn.usd_path:
+                fixed_asset_cfg = self._replace_usd_path(fixed_asset_cfg, fixed_usd)
+            self._fixed_asset = Articulation(fixed_asset_cfg)
+            self._fixed_assets.append(self._fixed_asset)
+
+            if self.profile.grasp_type == "gripper":
+                held_asset_cfg = pair["held_art"]
+                held_usd = _ensure_usd(held_asset_cfg.spawn.usd_path)
+                if held_usd != held_asset_cfg.spawn.usd_path:
+                    held_asset_cfg = self._replace_usd_path(held_asset_cfg, held_usd)
+                self._held_asset = Articulation(held_asset_cfg)
+                self._held_assets.append(self._held_asset)
+            else:
+                self._held_asset = None
+                self._held_assets.append(None)
 
         # Left arm (mirrored visual-only articulation, kinematic)
         if self.profile.left_arm is not None:
@@ -162,14 +286,9 @@ class ForgeEnv(DirectRLEnv):
         else:
             self._left_arm = None
 
-        # Held asset for gripper robots
-        if self.profile.grasp_type == "gripper":
-            self._held_asset = Articulation(self.cfg_task.held_asset)
-        else:
-            self._held_asset = None
-            # For fixed-peg robots, spawn peg collision on EE link
-            if self.profile.grasp_type == "fixed_peg" and self.profile.peg_offset_from_ee is not None:
-                self._spawn_peg_collision_on_ee()
+        # For fixed-peg robots (no held_asset articulation), spawn peg collision on EE link
+        if self.profile.grasp_type == "fixed_peg" and self.profile.peg_offset_from_ee is not None:
+            self._spawn_peg_collision_on_ee()
 
         if self.cfg_task.name == "gear_mesh":
             self._small_gear_asset = Articulation(self.cfg_task.small_gear_cfg)
@@ -180,9 +299,24 @@ class ForgeEnv(DirectRLEnv):
             self.scene.filter_collisions()
 
         self.scene.articulations["robot"] = self._robot
-        self.scene.articulations["fixed_asset"] = self._fixed_asset
-        if self._held_asset is not None:
-            self.scene.articulations["held_asset"] = self._held_asset
+
+        # Register all asset pair articulations
+        # Always register "held_asset" and "fixed_asset" aliases pointing to
+        # pair 0 so that EventCfg SceneEntityCfg references resolve correctly.
+        if self._num_asset_pairs > 1:
+            for i, (fa, ha) in enumerate(zip(self._fixed_assets, self._held_assets)):
+                self.scene.articulations[f"fixed_asset_{i}"] = fa
+                if ha is not None:
+                    self.scene.articulations[f"held_asset_{i}"] = ha
+            # Aliases for event config compatibility
+            self.scene.articulations["fixed_asset"] = self._fixed_assets[0]
+            if self._held_assets[0] is not None:
+                self.scene.articulations["held_asset"] = self._held_assets[0]
+        else:
+            self.scene.articulations["fixed_asset"] = self._fixed_asset
+            if self._held_asset is not None:
+                self.scene.articulations["held_asset"] = self._held_asset
+
         if self.cfg_task.name == "gear_mesh":
             self.scene.articulations["small_gear"] = self._small_gear_asset
             self.scene.articulations["large_gear"] = self._large_gear_asset
@@ -274,14 +408,83 @@ class ForgeEnv(DirectRLEnv):
         )
 
     # -----------------------------------------------------------------------
+    # Multi-asset helpers
+    # -----------------------------------------------------------------------
+
+    def _gather_fixed_pos_w(self) -> torch.Tensor:
+        """Gather fixed_asset root_pos_w from the correct pair per env."""
+        if self._num_asset_pairs <= 1:
+            return self._fixed_assets[0].data.root_pos_w
+        out = torch.zeros((self.num_envs, 3), device=self.device)
+        for i, art in enumerate(self._fixed_assets):
+            mask = self.asset_pair_idx == i
+            if mask.any():
+                out[mask] = art.data.root_pos_w[mask]
+        return out
+
+    def _gather_fixed_quat_w(self) -> torch.Tensor:
+        if self._num_asset_pairs <= 1:
+            return self._fixed_assets[0].data.root_quat_w
+        out = torch.zeros((self.num_envs, 4), device=self.device)
+        for i, art in enumerate(self._fixed_assets):
+            mask = self.asset_pair_idx == i
+            if mask.any():
+                out[mask] = art.data.root_quat_w[mask]
+        return out
+
+    def _gather_held_pos_w(self) -> torch.Tensor:
+        if self._num_asset_pairs <= 1:
+            return self._held_assets[0].data.root_pos_w
+        out = torch.zeros((self.num_envs, 3), device=self.device)
+        for i, art in enumerate(self._held_assets):
+            if art is None:
+                continue
+            mask = self.asset_pair_idx == i
+            if mask.any():
+                out[mask] = art.data.root_pos_w[mask]
+        return out
+
+    def _gather_held_quat_w(self) -> torch.Tensor:
+        if self._num_asset_pairs <= 1:
+            return self._held_assets[0].data.root_quat_w
+        out = torch.zeros((self.num_envs, 4), device=self.device)
+        for i, art in enumerate(self._held_assets):
+            if art is None:
+                continue
+            mask = self.asset_pair_idx == i
+            if mask.any():
+                out[mask] = art.data.root_quat_w[mask]
+        return out
+
+    def _get_active_fixed_cfg(self) -> "FixedAssetCfg":
+        """Return fixed_asset_cfg for the most common pair (used for reward dims)."""
+        if self._num_asset_pairs <= 1:
+            idx = min(1, len(ASSET_PAIRS) - 1)
+            return ASSET_PAIRS[idx]["fixed_cfg"]
+        pair_idx = self.asset_pair_idx[0].item()
+        return ASSET_PAIRS[pair_idx]["fixed_cfg"]
+
+    def _get_active_held_cfg(self) -> "HeldAssetCfg":
+        if self._num_asset_pairs <= 1:
+            idx = min(1, len(ASSET_PAIRS) - 1)
+            return ASSET_PAIRS[idx]["held_cfg"]
+        pair_idx = self.asset_pair_idx[0].item()
+        return ASSET_PAIRS[pair_idx]["held_cfg"]
+
+    # -----------------------------------------------------------------------
     # Initialization
     # -----------------------------------------------------------------------
 
     def _set_default_dynamics_parameters(self):
         """Set parameters defining dynamic interactions."""
-        if self._held_asset is not None:
-            forge_utils.set_friction(self._held_asset, self.cfg_task.held_asset_cfg.friction, self.scene.num_envs)
-        forge_utils.set_friction(self._fixed_asset, self.cfg_task.fixed_asset_cfg.friction, self.scene.num_envs)
+        if self._held_assets and any(h is not None for h in self._held_assets):
+            for i, ha in enumerate(self._held_assets):
+                if ha is not None:
+                    pair_held_cfg = ASSET_PAIRS[i]["held_cfg"]
+                    forge_utils.set_friction(ha, pair_held_cfg.friction, self.scene.num_envs)
+        for i, fa in enumerate(self._fixed_assets):
+            pair_fixed_cfg = ASSET_PAIRS[i]["fixed_cfg"]
+            forge_utils.set_friction(fa, pair_fixed_cfg.friction, self.scene.num_envs)
         forge_utils.set_friction(self._robot, self.cfg_task.robot_cfg.friction, self.scene.num_envs)
 
     def _init_tensors(self):
@@ -330,8 +533,8 @@ class ForgeEnv(DirectRLEnv):
         # Update contact sensor data (force arrows drawn at end of this method).
         self._contact_sensor.update(dt, force_recompute=True)
 
-        self.fixed_pos = self._fixed_asset.data.root_pos_w - self.scene.env_origins
-        self.fixed_quat = self._fixed_asset.data.root_quat_w
+        self.fixed_pos = self._gather_fixed_pos_w() - self.scene.env_origins
+        self.fixed_quat = self._gather_fixed_quat_w()
 
         self.ee_pos = self._robot.data.body_pos_w[:, self.ee_body_idx] - self.scene.env_origins
         self.ee_quat = self._robot.data.body_quat_w[:, self.ee_body_idx]
@@ -349,14 +552,12 @@ class ForgeEnv(DirectRLEnv):
             # Transform offset from ee_body local frame to world frame
             offset_world = torch_utils.quat_apply(self.ee_quat, offset.unsqueeze(0).expand(self.num_envs, -1))
             fingertip_pos = self.ee_pos + offset_world
-            # Fingertip orientation: apply force_sensor rotation if needed
-            # For Marvin, the force_sensor adds 90° X rotation from Link7_R to gripper
-            # The force_sensor joint has rpy=[pi/2, 0, 0] which rotates X by 90°
-            # This transforms: Link7_R -Y → force_sensor Z → gripper Z (down)
-            # The fingertip should have Z pointing down (like Franka)
-            # So we apply the force_sensor rotation to ee_quat
-            force_sensor_rot = torch.tensor([0.7071, 0.7071, 0.0, 0.0], device=self.device)  # quat for 90° X
-            fingertip_quat = torch_utils.quat_mul(self.ee_quat, force_sensor_rot.unsqueeze(0).expand(self.num_envs, -1))
+            # Apply robot-specific EE frame correction (e.g., Marvin Link7_R→gripper Z-down)
+            if self.profile.ee_frame_correction is not None:
+                frame_rot = torch.tensor(self.profile.ee_frame_correction, device=self.device)
+                fingertip_quat = torch_utils.quat_mul(self.ee_quat, frame_rot.unsqueeze(0).expand(self.num_envs, -1))
+            else:
+                fingertip_quat = self.ee_quat
             # Store original ee_body pose for reference (needed for Jacobian lookup)
             self.ee_body_pos = self.ee_pos.clone()
             self.ee_body_quat = self.ee_quat.clone()
@@ -366,9 +567,9 @@ class ForgeEnv(DirectRLEnv):
         # For Franka: ee_body IS the fingertip center, no transformation needed
         # (ee_pos/ee_quat remain unchanged)
 
-        if self._held_asset is not None:
-            self.held_pos = self._held_asset.data.root_pos_w - self.scene.env_origins
-            self.held_quat = self._held_asset.data.root_quat_w
+        if self._held_assets and any(h is not None for h in self._held_assets):
+            self.held_pos = self._gather_held_pos_w() - self.scene.env_origins
+            self.held_quat = self._gather_held_quat_w()
         else:
             # Fixed-peg: compute peg base position from EE pose.
             # Peg base sits at EE link origin (peg_offset_from_ee defines the direction).
@@ -391,7 +592,13 @@ class ForgeEnv(DirectRLEnv):
 
             # Hole top = fixed_pos + height along Z in hole frame
             hole_top_local = torch.zeros((self.num_envs, 3), device=self.device)
-            hole_top_local[:, 2] = self.cfg_task.fixed_asset_cfg.height
+            if self._num_asset_pairs > 1:
+                for i, pair in enumerate(ASSET_PAIRS):
+                    mask = self.asset_pair_idx == i
+                    if mask.any():
+                        hole_top_local[mask, 2] = pair["fixed_cfg"].height
+            else:
+                hole_top_local[:, 2] = self.cfg_task.fixed_asset_cfg.height
             _, self.hole_top_pos = torch_utils.tf_combine(
                 self.fixed_quat, self.fixed_pos, identity_quat, hole_top_local
             )
@@ -799,7 +1006,8 @@ class ForgeEnv(DirectRLEnv):
 
         rot_actions = actions[:, 3:6]
         angle = torch.norm(rot_actions, p=2, dim=-1)
-        axis = rot_actions / angle.unsqueeze(-1)
+        safe_angle = angle.clamp(min=1.0e-6)
+        axis = rot_actions / safe_angle.unsqueeze(-1)
         rot_actions_quat = torch_utils.quat_from_angle_axis(angle, axis)
         rot_actions_quat = torch.where(
             angle.unsqueeze(-1).repeat(1, 4) > 1.0e-6,
@@ -1063,6 +1271,12 @@ class ForgeEnv(DirectRLEnv):
         """Perform full reset for specified environments."""
         super()._reset_idx(env_ids)
 
+        # Randomize which asset pair each env uses
+        if self._num_asset_pairs > 1:
+            self.asset_pair_idx[env_ids] = torch.randint(
+                0, self._num_asset_pairs, (len(env_ids),), device=self.device
+            )
+
         self._set_assets_to_default_pose(env_ids)
         self._set_robot_to_default_pose(joints=self.cfg.ctrl.reset_joints, env_ids=env_ids)
 
@@ -1160,27 +1374,45 @@ class ForgeEnv(DirectRLEnv):
 
     def _set_assets_to_default_pose(self, env_ids):
         """Move assets to default pose before randomization."""
-        if self._held_asset is not None:
-            held_state = self._held_asset.data.default_root_state.clone()[env_ids]
+        # Set held assets to default
+        for i, ha in enumerate(self._held_assets):
+            if ha is None:
+                continue
+            held_state = ha.data.default_root_state.clone()[env_ids]
             held_state[:, 0:3] += self.scene.env_origins[env_ids]
             held_state[:, 7:] = 0.0
-            self._held_asset.write_root_pose_to_sim(held_state[:, 0:7], env_ids=env_ids)
-            self._held_asset.write_root_velocity_to_sim(held_state[:, 7:], env_ids=env_ids)
-            self._held_asset.reset()
+            # Move non-active held assets far away so they don't interfere
+            if self._num_asset_pairs > 1:
+                non_active = self.asset_pair_idx[env_ids] != i
+                held_state[non_active, 1] = -100.0
+            ha.write_root_pose_to_sim(held_state[:, 0:7], env_ids=env_ids)
+            ha.write_root_velocity_to_sim(held_state[:, 7:], env_ids=env_ids)
+            ha.reset()
 
-        fixed_state = self._fixed_asset.data.default_root_state.clone()[env_ids]
-        fixed_state[:, 0:3] += self.scene.env_origins[env_ids]
-        fixed_state[:, 7:] = 0.0
-        self._fixed_asset.write_root_pose_to_sim(fixed_state[:, 0:7], env_ids=env_ids)
-        self._fixed_asset.write_root_velocity_to_sim(fixed_state[:, 7:], env_ids=env_ids)
-        self._fixed_asset.reset()
+        # Set fixed assets to default
+        for i, fa in enumerate(self._fixed_assets):
+            fixed_state = fa.data.default_root_state.clone()[env_ids]
+            fixed_state[:, 0:3] += self.scene.env_origins[env_ids]
+            fixed_state[:, 7:] = 0.0
+            # Move non-active fixed assets far away
+            if self._num_asset_pairs > 1:
+                non_active = self.asset_pair_idx[env_ids] != i
+                fixed_state[non_active, 1] = -100.0
+            fa.write_root_pose_to_sim(fixed_state[:, 0:7], env_ids=env_ids)
+            fa.write_root_velocity_to_sim(fixed_state[:, 7:], env_ids=env_ids)
+            fa.reset()
 
     def _set_robot_to_default_pose(self, joints, env_ids):
         """Return robot to its default joint position."""
         joint_pos = self._robot.data.default_joint_pos[env_ids].clone()
         joint_pos[:, self.arm_slice] = torch.tensor(joints, device=self.device)[None, :]
         if self.gripper_slice is not None:
-            gripper_width = self.cfg_task.held_asset_cfg.diameter / 2 * 1.25 if self.profile.has_gripper else 0.0
+            if self.profile.has_gripper:
+                # Use max diameter across all pairs for a safe gripper opening
+                max_diam = max(p["held_cfg"].diameter for p in ASSET_PAIRS) if self._num_asset_pairs > 1 else self.cfg_task.held_asset_cfg.diameter
+                gripper_width = max_diam / 2 * 1.25
+            else:
+                gripper_width = 0.0
             joint_pos[:, self.gripper_slice] = gripper_width
         joint_vel = torch.zeros_like(joint_pos)
         joint_effort = torch.zeros_like(joint_pos)
@@ -1258,8 +1490,18 @@ class ForgeEnv(DirectRLEnv):
 
         if self.cfg_task.name == "peg_insert":
             held_asset_relative_pos = torch.zeros((self.num_envs, 3), device=self.device)
-            held_asset_relative_pos[:, 2] = self.cfg_task.held_asset_cfg.height
-            held_asset_relative_pos[:, 2] -= self.profile.fingerpad_length
+            if self._num_asset_pairs > 1:
+                # Per-env height based on asset_pair_idx
+                heights = torch.tensor([p["held_cfg"].height for p in ASSET_PAIRS], device=self.device)
+                grip_offsets = torch.tensor([p["held_cfg"].grip_offset for p in ASSET_PAIRS], device=self.device)
+                held_asset_relative_pos[:, 2] = heights[self.asset_pair_idx]
+                held_asset_relative_pos[:, 2] -= self.profile.fingerpad_length
+                held_asset_relative_pos[:, 2] += grip_offsets[self.asset_pair_idx]
+            else:
+                held_cfg = self._get_active_held_cfg()
+                held_asset_relative_pos[:, 2] = held_cfg.height
+                held_asset_relative_pos[:, 2] -= self.profile.fingerpad_length
+                held_asset_relative_pos[:, 2] += held_cfg.grip_offset
         elif self.cfg_task.name == "gear_mesh":
             held_asset_relative_pos = torch.zeros((self.num_envs, 3), device=self.device)
             gear_base_offset = self.cfg_task.fixed_asset_cfg.medium_gear_base_offset
@@ -1293,7 +1535,7 @@ class ForgeEnv(DirectRLEnv):
         physics_sim_view.set_gravity(carb.Float3(0.0, 0.0, 0.0))
 
         # (1) Randomize fixed asset pose.
-        fixed_state = self._fixed_asset.data.default_root_state.clone()[env_ids]
+        fixed_state = self._fixed_assets[0].data.default_root_state.clone()[env_ids]
         rand_sample = torch.rand((len(env_ids), 3), dtype=torch.float32, device=self.device)
         fixed_pos_init_rand = 2 * (rand_sample - 0.5)
         fixed_asset_init_pos_rand = torch.tensor(
@@ -1312,9 +1554,19 @@ class ForgeEnv(DirectRLEnv):
         )
         fixed_state[:, 3:7] = fixed_orn_quat
         fixed_state[:, 7:] = 0.0
-        self._fixed_asset.write_root_pose_to_sim(fixed_state[:, 0:7], env_ids=env_ids)
-        self._fixed_asset.write_root_velocity_to_sim(fixed_state[:, 7:], env_ids=env_ids)
-        self._fixed_asset.reset()
+        # Write to all fixed asset articulations
+        for i, fa in enumerate(self._fixed_assets):
+            s = fa.data.default_root_state.clone()[env_ids]
+            s[:, 0:3] = fixed_state[:, 0:3].clone()
+            s[:, 3:7] = fixed_state[:, 3:7].clone()
+            s[:, 7:] = 0.0
+            # Move non-active pairs far away
+            if self._num_asset_pairs > 1:
+                non_active = self.asset_pair_idx[env_ids] != i
+                s[non_active, 1] = -100.0
+            fa.write_root_pose_to_sim(s[:, 0:7], env_ids=env_ids)
+            fa.write_root_velocity_to_sim(s[:, 7:], env_ids=env_ids)
+            fa.reset()
 
         # Noisy position observation.
         fixed_asset_pos_noise = torch.randn((len(env_ids), 3), dtype=torch.float32, device=self.device)
@@ -1326,8 +1578,16 @@ class ForgeEnv(DirectRLEnv):
 
         # Compute observation frame.
         fixed_tip_pos_local = torch.zeros((self.num_envs, 3), device=self.device)
-        fixed_tip_pos_local[:, 2] += self.cfg_task.fixed_asset_cfg.height
-        fixed_tip_pos_local[:, 2] += self.cfg_task.fixed_asset_cfg.base_height
+        if self._num_asset_pairs > 1:
+            # Use per-env height/base_height based on asset_pair_idx
+            for i, pair in enumerate(ASSET_PAIRS):
+                mask = self.asset_pair_idx == i
+                if mask.any():
+                    fixed_tip_pos_local[mask, 2] += pair["fixed_cfg"].height
+                    fixed_tip_pos_local[mask, 2] += pair["fixed_cfg"].base_height
+        else:
+            fixed_tip_pos_local[:, 2] += self.cfg_task.fixed_asset_cfg.height
+            fixed_tip_pos_local[:, 2] += self.cfg_task.fixed_asset_cfg.base_height
         if self.cfg_task.name == "gear_mesh":
             fixed_tip_pos_local[:, 0] = self.cfg_task.fixed_asset_cfg.medium_gear_base_offset[0]
 
@@ -1489,13 +1749,26 @@ class ForgeEnv(DirectRLEnv):
             t2=held_asset_pos_noise,
         )
 
-        held_state = self._held_asset.data.default_root_state.clone()
+        held_state = self._held_assets[0].data.default_root_state.clone()
         held_state[:, 0:3] = translated_held_asset_pos + self.scene.env_origins
         held_state[:, 3:7] = translated_held_asset_quat
         held_state[:, 7:] = 0.0
-        self._held_asset.write_root_pose_to_sim(held_state[:, 0:7])
-        self._held_asset.write_root_velocity_to_sim(held_state[:, 7:])
-        self._held_asset.reset()
+        # Write to all held asset articulations (only the active one matters)
+        for ha in self._held_assets:
+            if ha is None:
+                continue
+            s = ha.data.default_root_state.clone()
+            s[:, 0:3] = translated_held_asset_pos + self.scene.env_origins
+            s[:, 3:7] = translated_held_asset_quat
+            s[:, 7:] = 0.0
+            # Move non-active pairs far away
+            if self._num_asset_pairs > 1:
+                pair_i = self._held_assets.index(ha)
+                non_active = self.asset_pair_idx != pair_i
+                s[non_active, 1] = -100.0
+            ha.write_root_pose_to_sim(s[:, 0:7])
+            ha.write_root_velocity_to_sim(s[:, 7:])
+            ha.reset()
 
     # -----------------------------------------------------------------------
     # Sim helpers

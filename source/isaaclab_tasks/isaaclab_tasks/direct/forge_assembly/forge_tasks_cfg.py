@@ -9,6 +9,8 @@ Self-contained task configs inlined from factory_tasks_cfg to remove
 dependency on the factory module.
 """
 
+import os
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 from isaaclab.utils import configclass
@@ -39,6 +41,7 @@ class HeldAssetCfg:
     height: float = 0.0
     friction: float = 0.75
     mass: float = 0.05
+    grip_offset: float = 0.0  # Z offset from default grip position (positive = deeper into gripper)
 
 
 @configclass
@@ -346,3 +349,58 @@ class ForgeNutThread(ForgeTask):
     held_asset: ArticulationCfg = _make_asset_cfg(
         "/World/envs/env_.*/HeldAsset", f"{ASSET_DIR}/factory_nut_m16.usd", 0.03, disable_gravity=True
     )
+
+
+# ---------------------------------------------------------------------------
+# Peg-insert asset pair registry
+# ---------------------------------------------------------------------------
+# Each entry defines a (held, fixed) pair.  During training the environment
+# randomly selects a pair per environment at reset, so the policy generalises
+# across different peg/hole geometries.  To add a new part (B003, B004 …)
+# simply append a dict to ASSET_PAIRS below.
+# ---------------------------------------------------------------------------
+
+_LOCAL_ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "stl")
+
+
+def _stl(name: str) -> str:
+    """Return absolute path to a local STL asset."""
+    return os.path.join(_LOCAL_ASSET_DIR, name)
+
+
+ASSET_PAIRS: list[dict] = [
+    # --- Factory default 8 mm peg + hole ---
+    {
+        "held_cfg": Peg8mm(),
+        "fixed_cfg": Hole8mm(),
+        "held_art": _make_asset_cfg(
+            "/World/envs/env_.*/HeldAsset", f"{ASSET_DIR}/factory_peg_8mm.usd", 0.019, disable_gravity=True
+        ),
+        "fixed_art": _make_fixed_asset_cfg(
+            "/World/envs/env_.*/FixedAsset", f"{ASSET_DIR}/factory_hole_8mm.usd", 0.05
+        ),
+    },
+    # --- B002-1075-81A (peg=stainless 40Cr13, housing=aluminum 6063) ---
+    {
+        "held_cfg": HeldAssetCfg(
+            usd_path=_stl("B002-1075-81A-peg.stl"),
+            diameter=0.008,
+            height=0.082,
+            mass=0.032,  # stainless steel 40Cr13 (~7700 kg/m3)
+            friction=0.45,  # steel-aluminum dry friction
+        ),
+        "fixed_cfg": FixedAssetCfg(
+            usd_path=_stl("B002-1075-81A-fixed-asset.stl"),
+            diameter=0.008,
+            height=0.0096,
+            base_height=0.021,
+            friction=0.45,  # aluminum side of steel-aluminum contact
+        ),
+        "held_art": _make_asset_cfg(
+            "/World/envs/env_.*/HeldAsset", _stl("B002-1075-81A-peg.stl"), 0.032, disable_gravity=True
+        ),
+        "fixed_art": _make_fixed_asset_cfg(
+            "/World/envs/env_.*/FixedAsset", _stl("B002-1075-81A-fixed-asset.stl"), 0.101
+        ),
+    },
+]

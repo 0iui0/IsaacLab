@@ -15,6 +15,32 @@ class RobotProfile:
     never depends on hardcoded joint names, body names, or DOF counts.
     """
 
+    def __post_init__(self):
+        # Validate joint config consistency
+        if len(self.default_arm_joint_pos) != self.num_arm_joints:
+            raise ValueError(
+                f"default_arm_joint_pos length ({len(self.default_arm_joint_pos)}) "
+                f"!= num_arm_joints ({self.num_arm_joints})"
+            )
+        if len(self.reset_arm_joint_pos) != self.num_arm_joints:
+            raise ValueError(
+                f"reset_arm_joint_pos length ({len(self.reset_arm_joint_pos)}) "
+                f"!= num_arm_joints ({self.num_arm_joints})"
+            )
+        # Validate fixed_peg requires peg config
+        if self.grasp_type == "fixed_peg":
+            if self.peg_offset_from_ee is None:
+                raise ValueError("fixed_peg requires peg_offset_from_ee")
+            if self.peg_radius <= 0:
+                raise ValueError("fixed_peg requires peg_radius > 0")
+            if self.peg_height <= 0:
+                raise ValueError("fixed_peg requires peg_height > 0")
+        # Validate gripper consistency
+        if self.has_gripper and self.gripper_joint_ids is None:
+            raise ValueError("has_gripper=True requires gripper_joint_ids")
+        if not self.has_gripper and self.gripper_joint_ids is not None:
+            raise ValueError("has_gripper=False but gripper_joint_ids is set")
+
     # --- ArticulationCfg (the robot asset itself) ---
     robot: ArticulationCfg = None
 
@@ -82,7 +108,12 @@ class RobotProfile:
 
     # --- Fixed peg configuration (for UR10/CR5) ---
     peg_offset_from_ee: list = None
-    """[x, y, z] offset from EE link to peg tip (meters). Only used for fixed_peg robots."""
+    """Direction vector from EE link to peg tip, scaled by peg_height/2 at spawn time.
+
+    Must be a unit direction vector (e.g., [1,0,0] for X, [0,0,1] for Z).
+    The actual offset is computed as: direction * peg_height / 2.
+    Only used for fixed_peg robots.
+    """
 
     peg_radius: float = 0.0
     """Radius of the peg (meters). Only used for fixed_peg robots."""
@@ -109,3 +140,13 @@ class RobotProfile:
     # --- Left arm (visual-only articulation) ---
     left_arm: ArticulationCfg | None = None
     """Optional left arm Articulation. Kinematic-only, does not participate in training."""
+
+    # --- EE frame correction ---
+    ee_frame_correction: list | None = None
+    """Quaternion [w,x,y,z] to correct EE body frame to a standard control frame.
+
+    Applied when ee_to_fingertip_offset is non-zero, transforming the EE orientation
+    so that Z points down (matching the control convention).
+    For Marvin: [0.7071, 0.7071, 0, 0] (90° around X to align Link7_R -Y with gripper Z-down).
+    For Franka: None (ee_body IS the fingertip, already correct).
+    """

@@ -147,6 +147,9 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
     ee_to_fingertip_offset=[0.0, -0.228571, 0.0],
     # --- Grasp type ---
     grasp_type="gripper",
+    # --- EE frame correction ---
+    # Link7_R -Y → force_sensor Z → gripper Z-down, so apply 90° X rotation
+    ee_frame_correction=[0.7071, 0.7071, 0.0, 0.0],
     # --- Keypoint axis ---
     # Panda gripper fingertip extends along Z in its local frame
     keypoint_axis=2,

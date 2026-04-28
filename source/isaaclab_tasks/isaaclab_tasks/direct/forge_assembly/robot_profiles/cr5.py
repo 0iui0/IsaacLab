@@ -86,7 +86,7 @@ CR5_FORGE_PROFILE = RobotProfile(
     # --- Grasp type ---
     grasp_type="fixed_peg",
     # --- Fixed peg configuration ---
-    peg_offset_from_ee=[0.0, 0.0, 0.15],  # Peg extends 15cm from EE link
+    peg_offset_from_ee=[0.0, 0.0, 1.0],  # Z-axis direction; scaled by peg_height/2 at runtime
     peg_radius=0.0125,  # 25mm diameter peg
     peg_height=0.0625,  # 62.5mm peg height
     peg_material=(1.0, 1.0, 0.0),  # (static_friction, dynamic_friction, restitution)
