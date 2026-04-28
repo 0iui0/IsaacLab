@@ -25,6 +25,8 @@ from isaaclab.markers import VisualizationMarkers
 from isaaclab.markers.visualization_markers import VisualizationMarkersCfg
 from isaaclab.sensors import ContactSensor, ContactSensorCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
+from isaaclab.sim.spawners.materials import PreviewSurfaceCfg, spawn_preview_surface
+from isaaclab.sim.utils import bind_visual_material
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,11 +41,11 @@ from .robot_profiles import RobotProfile
 def _ensure_usd(asset_path: str) -> str:
     """Convert STL to USD if needed, returning the USD path.
 
-    Uses MeshConverter for geometry, then creates a wrapper USD that matches
-    the factory asset structure:
-      Root (Xform)                     <- defaultPrim
-        asset_name (Xform)             <- ArticulationRootAPI + RigidBodyAPI
-          mesh (referenced geometry)    <- CollisionAPI
+    Uses MeshConverter for geometry, then adds physics APIs directly to the
+    converted mesh USD to match the factory asset convention:
+      Xform (defaultPrim)  <- ArticulationRootAPI + RigidBodyAPI
+        geometry/mesh       <- CollisionAPI (Mesh prim)
+        geometry/Looks/...  <- material (from MeshConverter)
     """
     if not asset_path.lower().endswith(".stl"):
         return asset_path
@@ -53,7 +55,7 @@ def _ensure_usd(asset_path: str) -> str:
     if os.path.isfile(usd_path):
         return usd_path
 
-    from pxr import Sdf, Usd, UsdGeom, UsdPhysics, PhysxSchema
+    from pxr import Usd, UsdGeom, UsdPhysics, PhysxSchema
     from isaaclab.sim import MeshConverter, MeshConverterCfg
 
     # Step 1: Convert STL to mesh geometry USD
@@ -68,32 +70,33 @@ def _ensure_usd(asset_path: str) -> str:
     MeshConverter(mc_cfg)
     mesh_usd_path = os.path.join(os.path.dirname(usd_path), mesh_usd_name)
 
-    # Step 2: Create wrapper USD matching factory asset structure
-    stage = Usd.Stage.CreateNew(usd_path)
-    asset_name = os.path.splitext(os.path.basename(asset_path))[0].replace("-", "_")
+    # Step 2: Add physics APIs directly to the mesh USD (no wrapper needed)
+    stage = Usd.Stage.Open(mesh_usd_path)
+    root_prim = stage.GetDefaultPrim()
+    if not root_prim:
+        # If there's no defaultPrim, create the Xform structure
+        root_prim = UsdGeom.Xform.Define(stage, "/Root").GetPrim()
+        stage.SetDefaultPrim(root_prim)
 
-    # Root Xform (pure container, defaultPrim)
-    root = UsdGeom.Xform.Define(stage, "/Root")
-    stage.SetDefaultPrim(root.GetPrim())
+    # ArticulationRootAPI + RigidBodyAPI on the root Xform
+    UsdPhysics.ArticulationRootAPI.Apply(root_prim)
+    UsdPhysics.RigidBodyAPI.Apply(root_prim)
 
-    # Link Xform — has ArticulationRootAPI + RigidBodyAPI (like factory peg)
-    link_path = f"/Root/{asset_name}"
-    link_xform = UsdGeom.Xform.Define(stage, link_path)
-    link_prim = link_xform.GetPrim()
-    UsdPhysics.ArticulationRootAPI.Apply(link_prim)
-    UsdPhysics.RigidBodyAPI.Apply(link_prim)
+    # Find the Mesh prim and add CollisionAPI
+    mesh_prim = None
+    for prim in Usd.PrimRange(root_prim):
+        if prim.IsA(UsdGeom.Mesh):
+            mesh_prim = prim
+            break
+    if mesh_prim is not None:
+        UsdPhysics.CollisionAPI.Apply(mesh_prim)
 
-    # Mesh child — references the geometry, has CollisionAPI
-    mesh_path = f"{link_path}/mesh"
-    mesh_prim = stage.DefinePrim(mesh_path)
-    mesh_prim.GetReferences().AddReference(Sdf.Reference(assetPath=mesh_usd_path))
-    UsdPhysics.CollisionAPI.Apply(mesh_prim)
-
-    # Contact report on the link (rigid body level)
-    cr_api = PhysxSchema.PhysxContactReportAPI.Apply(link_prim)
+    # Contact report on the root
+    cr_api = PhysxSchema.PhysxContactReportAPI.Apply(root_prim)
     cr_api.CreateThresholdAttr().Set(0.0)
 
-    stage.GetRootLayer().Save()
+    # Save back to the output .usd path (NOT the _mesh.usd path)
+    stage.Export(usd_path)
     return usd_path
 
 
@@ -176,6 +179,47 @@ class ForgeEnv(DirectRLEnv):
         new_cfg.prim_path = prim_path
         return new_cfg
 
+    def _apply_asset_materials(self):
+        """Apply visual materials to B002 asset meshes using Isaac Lab's material system.
+
+        Called after clone_environments so all prims exist on the live stage.
+        Only processes B002 (ASSET_PAIRS index 1) — factory USD assets already have
+        their own material from the USDA file and don't need an override.
+        """
+        from isaaclab.sim.utils import get_current_stage
+
+        # B002 is at index 1, only applies in multi-asset mode
+        if self._num_asset_pairs < 2:
+            return
+
+        stage = get_current_stage()
+        i = 1  # B002 pair index
+        pair = ASSET_PAIRS[i]
+        suffix = f"_{i}"
+        self._bind_pair_material(stage, self.num_envs, pair, "FixedAsset", suffix, "fixed_material")
+        if self.profile.grasp_type == "gripper":
+            self._bind_pair_material(stage, self.num_envs, pair, "HeldAsset", suffix, "held_material")
+
+    @staticmethod
+    def _bind_pair_material(stage, num_envs: int, pair: dict, art_prefix: str, suffix: str, material_key: str):
+        """Create and bind a PreviewSurface material to mesh prims for one asset pair."""
+        mat = pair.get(material_key)
+        if not mat:
+            return
+        mat_path = f"/World/Materials/{art_prefix}{suffix}"
+        spawn_preview_surface(mat_path, PreviewSurfaceCfg(
+            diffuse_color=mat.get("diffuse_color", (0.6, 0.4, 0.2)),
+            metallic=mat.get("metallic", 0.0),
+            roughness=mat.get("roughness", 0.5),
+        ))
+        if not stage.GetPrimAtPath(mat_path):
+            return
+        # Bind material to the articulation root using Kit command (propagates to all children).
+        for env_idx in range(num_envs):
+            art_path = f"/World/envs/env_{env_idx}/{art_prefix}{suffix}"
+            if stage.GetPrimAtPath(art_path):
+                bind_visual_material(art_path, mat_path)
+
     def _setup_scene(self):
         """Initialize simulation scene."""
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg(), translation=(0.0, 0.0, -1.05))
@@ -227,11 +271,17 @@ class ForgeEnv(DirectRLEnv):
             # so event configs referencing "held_asset"/"fixed_asset" still work.
             for i, pair in enumerate(ASSET_PAIRS):
                 suffix = f"_{i}" if i > 0 else ""
-                fixed_cfg = self._resolve_art_cfg(pair["fixed_art"], f"/World/envs/env_.*/FixedAsset{suffix}")
+                fixed_cfg = self._resolve_art_cfg(
+                    pair["fixed_art"],
+                    f"/World/envs/env_.*/FixedAsset{suffix}",
+                )
                 fixed_cfg.init_state.pos = self.cfg_task.fixed_asset.init_state.pos
                 self._fixed_assets.append(Articulation(fixed_cfg))
                 if self.profile.grasp_type == "gripper":
-                    held_cfg = self._resolve_art_cfg(pair["held_art"], f"/World/envs/env_.*/HeldAsset{suffix}")
+                    held_cfg = self._resolve_art_cfg(
+                        pair["held_art"],
+                        f"/World/envs/env_.*/HeldAsset{suffix}",
+                    )
                     self._held_assets.append(Articulation(held_cfg))
                 else:
                     self._held_assets.append(None)
@@ -295,6 +345,7 @@ class ForgeEnv(DirectRLEnv):
             self._large_gear_asset = Articulation(self.cfg_task.large_gear_cfg)
 
         self.scene.clone_environments(copy_from_source=True)
+        self._apply_asset_materials()
         if self.device == "cpu":
             self.scene.filter_collisions()
 

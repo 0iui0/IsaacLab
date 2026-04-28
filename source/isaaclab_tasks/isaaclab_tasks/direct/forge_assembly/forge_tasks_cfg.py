@@ -379,6 +379,8 @@ ASSET_PAIRS: list[dict] = [
         "fixed_art": _make_fixed_asset_cfg(
             "/World/envs/env_.*/FixedAsset", f"{ASSET_DIR}/factory_hole_8mm.usd", 0.05
         ),
+        "held_material": {"diffuse_color": (0.75, 0.75, 0.75), "metallic": 0.6, "roughness": 0.3},
+        "fixed_material": {"diffuse_color": (0.55, 0.55, 0.6), "metallic": 0.5, "roughness": 0.4},
     },
     # --- B002-1075-81A (peg=stainless 40Cr13, housing=aluminum 6063) ---
     {
@@ -402,5 +404,15 @@ ASSET_PAIRS: list[dict] = [
         "fixed_art": _make_fixed_asset_cfg(
             "/World/envs/env_.*/FixedAsset", _stl("B002-1075-81A-fixed-asset.stl"), 0.101
         ),
+        "held_material": {
+            "diffuse_color": (0.78, 0.78, 0.8),  # stainless steel 40Cr13
+            "metallic": 1.0,
+            "roughness": 0.25,
+        },
+        "fixed_material": {
+            "diffuse_color": (0.62, 0.62, 0.65),  # aluminum 6063
+            "metallic": 0.8,
+            "roughness": 0.35,
+        },
     },
 ]
