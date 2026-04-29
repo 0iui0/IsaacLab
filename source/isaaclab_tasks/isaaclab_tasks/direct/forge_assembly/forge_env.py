@@ -90,6 +90,10 @@ def _ensure_usd(asset_path: str) -> str:
             break
     if mesh_prim is not None:
         UsdPhysics.CollisionAPI.Apply(mesh_prim)
+        # Triangle mesh collision is not supported for dynamic bodies by PhysX.
+        # convexHull approximation ensures accurate collision geometry.
+        mesh_collision_api = UsdPhysics.MeshCollisionAPI.Apply(mesh_prim)
+        mesh_collision_api.GetApproximationAttr().Set("convexHull")
 
     # Contact report on the root
     cr_api = PhysxSchema.PhysxContactReportAPI.Apply(root_prim)
