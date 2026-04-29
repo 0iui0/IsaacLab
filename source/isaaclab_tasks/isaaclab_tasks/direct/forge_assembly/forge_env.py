@@ -180,25 +180,24 @@ class ForgeEnv(DirectRLEnv):
         return new_cfg
 
     def _apply_asset_materials(self):
-        """Apply visual materials to B002 asset meshes using Isaac Lab's material system.
+        """Apply visual materials to custom asset meshes using Isaac Lab's material system.
 
         Called after clone_environments so all prims exist on the live stage.
-        Only processes B002 (ASSET_PAIRS index 1) — factory USD assets already have
-        their own material from the USDA file and don't need an override.
+        Skips pair index 0 (factory USD assets — they carry material from the USDA file).
         """
         from isaaclab.sim.utils import get_current_stage
 
-        # B002 is at index 1, only applies in multi-asset mode
         if self._num_asset_pairs < 2:
             return
 
         stage = get_current_stage()
-        i = 1  # B002 pair index
-        pair = ASSET_PAIRS[i]
-        suffix = f"_{i}"
-        self._bind_pair_material(stage, self.num_envs, pair, "FixedAsset", suffix, "fixed_material")
-        if self.profile.grasp_type == "gripper":
-            self._bind_pair_material(stage, self.num_envs, pair, "HeldAsset", suffix, "held_material")
+        for i, pair in enumerate(ASSET_PAIRS):
+            if i == 0:
+                continue  # Factory USD assets have embedded material
+            suffix = f"_{i}"
+            self._bind_pair_material(stage, self.num_envs, pair, "FixedAsset", suffix, "fixed_material")
+            if self.profile.grasp_type == "gripper":
+                self._bind_pair_material(stage, self.num_envs, pair, "HeldAsset", suffix, "held_material")
 
     @staticmethod
     def _bind_pair_material(stage, num_envs: int, pair: dict, art_prefix: str, suffix: str, material_key: str):
@@ -286,7 +285,7 @@ class ForgeEnv(DirectRLEnv):
                 else:
                     self._held_assets.append(None)
         else:
-            # Single-asset path: use B002-1075-81A pair (index 1)
+            # Single-asset path: use first custom pair (index 1)
             pair = ASSET_PAIRS[1] if len(ASSET_PAIRS) > 1 else ASSET_PAIRS[0]
             fixed_asset_cfg = pair["fixed_art"]
             # Inherit position from task config (robot-specific placement)

@@ -382,37 +382,70 @@ ASSET_PAIRS: list[dict] = [
         "held_material": {"diffuse_color": (0.75, 0.75, 0.75), "metallic": 0.6, "roughness": 0.3},
         "fixed_material": {"diffuse_color": (0.55, 0.55, 0.6), "metallic": 0.5, "roughness": 0.4},
     },
-    # --- B002-1075-81A (peg=stainless 40Cr13, housing=aluminum 6063) ---
+    # --- pair1 (peg=stainless steel, housing=aluminum alloy) ---
     {
         "held_cfg": HeldAssetCfg(
-            usd_path=_stl("B002-1075-81A-peg.stl"),
+            usd_path=_stl("pair1_peg.stl"),
             diameter=0.008,
             height=0.082,
-            mass=0.032,  # stainless steel 40Cr13 (~7700 kg/m3)
+            mass=0.032,  # stainless steel (~7700 kg/m3)
             friction=0.45,  # steel-aluminum dry friction
         ),
         "fixed_cfg": FixedAssetCfg(
-            usd_path=_stl("B002-1075-81A-fixed-asset.stl"),
+            usd_path=_stl("pair1_fixed.stl"),
             diameter=0.008,
             height=0.0096,
             base_height=0.021,
             friction=0.45,  # aluminum side of steel-aluminum contact
         ),
         "held_art": _make_asset_cfg(
-            "/World/envs/env_.*/HeldAsset", _stl("B002-1075-81A-peg.stl"), 0.032, disable_gravity=True
+            "/World/envs/env_.*/HeldAsset", _stl("pair1_peg.stl"), 0.032, disable_gravity=True
         ),
         "fixed_art": _make_fixed_asset_cfg(
-            "/World/envs/env_.*/FixedAsset", _stl("B002-1075-81A-fixed-asset.stl"), 0.101
+            "/World/envs/env_.*/FixedAsset", _stl("pair1_fixed.stl"), 0.101
         ),
         "held_material": {
-            "diffuse_color": (0.78, 0.78, 0.8),  # stainless steel 40Cr13
+            "diffuse_color": (0.78, 0.78, 0.8),  # stainless steel
             "metallic": 1.0,
             "roughness": 0.25,
         },
         "fixed_material": {
-            "diffuse_color": (0.62, 0.62, 0.65),  # aluminum 6063
+            "diffuse_color": (0.62, 0.62, 0.65),  # aluminum alloy
             "metallic": 0.8,
             "roughness": 0.35,
+        },
+    },
+    # --- pair2 (peg=steel shaft, fixed-asset=housing+ring magnet assembly) ---
+    {
+        "held_cfg": HeldAssetCfg(
+            usd_path=_stl("pair2_peg.stl"),
+            diameter=0.0061,
+            height=0.066,
+            mass=0.014,  # steel shaft (~7.5 g/cm³ from 1862 mm³)
+            friction=0.5,
+        ),
+        "fixed_cfg": FixedAssetCfg(
+            usd_path=_stl("pair2_fixed.stl"),
+            diameter=0.0062,
+            height=0.025,
+            base_height=0.010,
+            friction=0.5,
+        ),
+        "held_art": _make_asset_cfg(
+            "/World/envs/env_.*/HeldAsset", _stl("pair2_peg.stl"), 0.014, disable_gravity=True
+        ),
+        "fixed_art": _make_fixed_asset_cfg(
+            "/World/envs/env_.*/FixedAsset", _stl("pair2_fixed.stl"), 0.100
+        ),
+        "held_material": {
+            "diffuse_color": (0.75, 0.75, 0.78),  # steel shaft
+            "metallic": 1.0,
+            "roughness": 0.3,
+        },
+        "fixed_material": {
+            "diffuse_color": (0.5, 0.5, 0.55),  # metal housing
+            "metallic": 0.7,
+            "roughness": 0.4,
         },
     },
 ]
