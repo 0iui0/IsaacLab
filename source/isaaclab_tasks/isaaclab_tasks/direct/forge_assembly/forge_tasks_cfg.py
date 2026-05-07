@@ -363,8 +363,8 @@ class ForgeNutThread(ForgeTask):
 _LOCAL_ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "stl")
 
 
-def _stl(name: str) -> str:
-    """Return absolute path to a local STL asset."""
+def _asset_path(name: str) -> str:
+    """Return absolute path to a local asset file (USDA, STL, etc.)."""
     return os.path.join(_LOCAL_ASSET_DIR, name)
 
 
@@ -385,24 +385,24 @@ ASSET_PAIRS: list[dict] = [
     # --- pair1 (peg=stainless steel, housing=aluminum alloy) ---
     {
         "held_cfg": HeldAssetCfg(
-            usd_path=_stl("pair1_peg.stl"),
+            usd_path=_asset_path("pair1_peg.usd"),
             diameter=0.008,
             height=0.082,
             mass=0.032,  # stainless steel (~7700 kg/m3)
             friction=0.45,  # steel-aluminum dry friction
         ),
         "fixed_cfg": FixedAssetCfg(
-            usd_path=_stl("pair1_fixed.stl"),
+            usd_path=_asset_path("pair1_fixed.usd"),
             diameter=0.008,
             height=0.0096,
             base_height=0.021,
             friction=0.45,  # aluminum side of steel-aluminum contact
         ),
         "held_art": _make_asset_cfg(
-            "/World/envs/env_.*/HeldAsset", _stl("pair1_peg.stl"), 0.032, disable_gravity=True
+            "/World/envs/env_.*/HeldAsset", _asset_path("pair1_peg.usd"), 0.032, disable_gravity=True
         ),
         "fixed_art": _make_fixed_asset_cfg(
-            "/World/envs/env_.*/FixedAsset", _stl("pair1_fixed.stl"), 0.101
+            "/World/envs/env_.*/FixedAsset", _asset_path("pair1_fixed.usd"), 0.101
         ),
         "held_material": {
             "diffuse_color": (0.78, 0.78, 0.8),  # stainless steel
@@ -418,24 +418,24 @@ ASSET_PAIRS: list[dict] = [
     # --- pair2 (peg=steel shaft, fixed-asset=housing+ring magnet assembly) ---
     {
         "held_cfg": HeldAssetCfg(
-            usd_path=_stl("pair2_peg.stl"),
+            usd_path=_asset_path("pair2_peg.usd"),
             diameter=0.0061,
             height=0.066,
             mass=0.014,  # steel shaft (~7.5 g/cm³ from 1862 mm³)
             friction=0.5,
         ),
         "fixed_cfg": FixedAssetCfg(
-            usd_path=_stl("pair2_fixed.stl"),
+            usd_path=_asset_path("pair2_fixed.usd"),
             diameter=0.0062,
             height=0.025,
             base_height=0.010,
             friction=0.5,
         ),
         "held_art": _make_asset_cfg(
-            "/World/envs/env_.*/HeldAsset", _stl("pair2_peg.stl"), 0.014, disable_gravity=True
+            "/World/envs/env_.*/HeldAsset", _asset_path("pair2_peg.usd"), 0.014, disable_gravity=True
         ),
         "fixed_art": _make_fixed_asset_cfg(
-            "/World/envs/env_.*/FixedAsset", _stl("pair2_fixed.stl"), 0.100
+            "/World/envs/env_.*/FixedAsset", _asset_path("pair2_fixed.usd"), 0.100
         ),
         "held_material": {
             "diffuse_color": (0.75, 0.75, 0.78),  # steel shaft
@@ -448,4 +448,105 @@ ASSET_PAIRS: list[dict] = [
             "roughness": 0.4,
         },
     },
+    # --- pair_test (pair2 peg + factory 8mm hole, for debugging collision) ---
+    {
+        "held_cfg": HeldAssetCfg(
+            usd_path=_asset_path("pair2_peg.usd"),
+            diameter=0.0061,
+            height=0.066,
+            mass=0.014,
+            friction=0.5,
+        ),
+        "fixed_cfg": FixedAssetCfg(
+            usd_path=f"{ASSET_DIR}/factory_hole_8mm.usd",
+            diameter=0.0081,
+            height=0.025,
+            base_height=0.0,
+            friction=0.75,
+        ),
+        "held_art": _make_asset_cfg(
+            "/World/envs/env_.*/HeldAsset", _asset_path("pair2_peg.usd"), 0.014, disable_gravity=True
+        ),
+        "fixed_art": _make_fixed_asset_cfg(
+            "/World/envs/env_.*/FixedAsset", f"{ASSET_DIR}/factory_hole_8mm.usd", 0.05
+        ),
+        "held_material": {
+            "diffuse_color": (0.75, 0.75, 0.78),
+            "metallic": 1.0,
+            "roughness": 0.3,
+        },
+        "fixed_material": {
+            "diffuse_color": (0.55, 0.55, 0.6),
+            "metallic": 0.5,
+            "roughness": 0.4,
+        },
+    },
+    # --- pair3 (pair2 original fixed + peg XY-scaled to 2mm diameter) ---
+    {
+        "held_cfg": HeldAssetCfg(
+            usd_path=_asset_path("pair2_peg_scaled.usda"),
+            diameter=0.0020,  # scaled from 6.1mm by 0.328
+            height=0.066,
+            mass=0.014,
+            friction=0.5,
+        ),
+        "fixed_cfg": FixedAssetCfg(
+            usd_path=_asset_path("pair2_fixed.usd"),
+            diameter=0.0062,
+            height=0.025,
+            base_height=0.010,
+            friction=0.5,
+        ),
+        "held_art": _make_asset_cfg(
+            "/World/envs/env_.*/HeldAsset", _asset_path("pair2_peg_scaled.usda"), 0.014, disable_gravity=True
+        ),
+        "fixed_art": _make_fixed_asset_cfg(
+            "/World/envs/env_.*/FixedAsset", _asset_path("pair2_fixed.usd"), 0.100
+        ),
+        "held_material": {
+            "diffuse_color": (0.75, 0.75, 0.78),
+            "metallic": 1.0,
+            "roughness": 0.3,
+        },
+        "fixed_material": {
+            "diffuse_color": (0.5, 0.5, 0.55),
+            "metallic": 0.7,
+            "roughness": 0.4,
+        },
+    },
+    # --- pair4 (pair1 fixed + peg XY-scaled to 2mm diameter) ---
+    {
+        "held_cfg": HeldAssetCfg(
+            usd_path=_asset_path("pair1_peg_scaled.usda"),
+            diameter=0.0020,  # scaled from 8mm by 0.25
+            height=0.082,
+            mass=0.032,
+            friction=0.45,
+        ),
+        "fixed_cfg": FixedAssetCfg(
+            usd_path=_asset_path("pair1_fixed.usd"),
+            diameter=0.008,
+            height=0.0096,
+            base_height=0.021,
+            friction=0.45,
+        ),
+        "held_art": _make_asset_cfg(
+            "/World/envs/env_.*/HeldAsset", _asset_path("pair1_peg_scaled.usda"), 0.032, disable_gravity=True
+        ),
+        "fixed_art": _make_fixed_asset_cfg(
+            "/World/envs/env_.*/FixedAsset", _asset_path("pair1_fixed.usd"), 0.101
+        ),
+        "held_material": {
+            "diffuse_color": (0.78, 0.78, 0.8),
+            "metallic": 1.0,
+            "roughness": 0.25,
+        },
+        "fixed_material": {
+            "diffuse_color": (0.62, 0.62, 0.65),
+            "metallic": 0.8,
+            "roughness": 0.35,
+        },
+    },
 ]
+
+

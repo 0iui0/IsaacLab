@@ -14,6 +14,7 @@ import os
 
 import carb
 import numpy as np
+import omni.usd
 import torch
 
 import isaacsim.core.utils.torch as torch_utils
@@ -36,72 +37,6 @@ from . import forge_control, forge_utils
 from .forge_env_cfg import OBS_DIM_CFG, STATE_DIM_CFG, ForgeEnvCfg
 from .forge_tasks_cfg import ASSET_PAIRS
 from .robot_profiles import RobotProfile
-
-
-def _ensure_usd(asset_path: str) -> str:
-    """Convert STL to USD if needed, returning the USD path.
-
-    Uses MeshConverter for geometry, then adds physics APIs directly to the
-    converted mesh USD to match the factory asset convention:
-      Xform (defaultPrim)  <- ArticulationRootAPI + RigidBodyAPI
-        geometry/mesh       <- CollisionAPI (Mesh prim)
-        geometry/Looks/...  <- material (from MeshConverter)
-    """
-    if not asset_path.lower().endswith(".stl"):
-        return asset_path
-    if not os.path.isfile(asset_path):
-        return asset_path
-    usd_path = os.path.splitext(asset_path)[0] + ".usd"
-    if os.path.isfile(usd_path):
-        return usd_path
-
-    from pxr import Usd, UsdGeom, UsdPhysics, PhysxSchema
-    from isaaclab.sim import MeshConverter, MeshConverterCfg
-
-    # Step 1: Convert STL to mesh geometry USD
-    mesh_usd_name = os.path.splitext(os.path.basename(asset_path))[0] + "_mesh.usd"
-    mc_cfg = MeshConverterCfg(
-        asset_path=asset_path,
-        usd_dir=os.path.dirname(usd_path),
-        usd_file_name=mesh_usd_name,
-        make_instanceable=False,
-        scale=(0.001, 0.001, 0.001),  # mm -> m
-    )
-    MeshConverter(mc_cfg)
-    mesh_usd_path = os.path.join(os.path.dirname(usd_path), mesh_usd_name)
-
-    # Step 2: Add physics APIs directly to the mesh USD (no wrapper needed)
-    stage = Usd.Stage.Open(mesh_usd_path)
-    root_prim = stage.GetDefaultPrim()
-    if not root_prim:
-        # If there's no defaultPrim, create the Xform structure
-        root_prim = UsdGeom.Xform.Define(stage, "/Root").GetPrim()
-        stage.SetDefaultPrim(root_prim)
-
-    # ArticulationRootAPI + RigidBodyAPI on the root Xform
-    UsdPhysics.ArticulationRootAPI.Apply(root_prim)
-    UsdPhysics.RigidBodyAPI.Apply(root_prim)
-
-    # Find the Mesh prim and add CollisionAPI
-    mesh_prim = None
-    for prim in Usd.PrimRange(root_prim):
-        if prim.IsA(UsdGeom.Mesh):
-            mesh_prim = prim
-            break
-    if mesh_prim is not None:
-        UsdPhysics.CollisionAPI.Apply(mesh_prim)
-        # Triangle mesh collision is not supported for dynamic bodies by PhysX.
-        # convexHull approximation ensures accurate collision geometry.
-        mesh_collision_api = UsdPhysics.MeshCollisionAPI.Apply(mesh_prim)
-        mesh_collision_api.GetApproximationAttr().Set("convexHull")
-
-    # Contact report on the root
-    cr_api = PhysxSchema.PhysxContactReportAPI.Apply(root_prim)
-    cr_api.CreateThresholdAttr().Set(0.0)
-
-    # Save back to the output .usd path (NOT the _mesh.usd path)
-    stage.Export(usd_path)
-    return usd_path
 
 
 class ForgeEnv(DirectRLEnv):
@@ -166,20 +101,10 @@ class ForgeEnv(DirectRLEnv):
     # -----------------------------------------------------------------------
 
     @staticmethod
-    def _replace_usd_path(cfg: ArticulationCfg, usd_path: str) -> ArticulationCfg:
-        """Return a copy of ArticulationCfg with the spawn usd_path replaced."""
+    def _clone_art_cfg(cfg: ArticulationCfg, prim_path: str) -> ArticulationCfg:
+        """Return a deep copy of ArticulationCfg with prim_path set."""
         import copy
         new_cfg = copy.deepcopy(cfg)
-        new_cfg.spawn.usd_path = usd_path
-        return new_cfg
-
-    @staticmethod
-    def _resolve_art_cfg(cfg: ArticulationCfg, prim_path: str) -> ArticulationCfg:
-        """Return a copy of ArticulationCfg with USD path resolved (STL→USD) and prim_path set."""
-        import copy
-        new_cfg = copy.deepcopy(cfg)
-        usd = _ensure_usd(new_cfg.spawn.usd_path)
-        new_cfg.spawn.usd_path = usd
         new_cfg.prim_path = prim_path
         return new_cfg
 
@@ -232,30 +157,11 @@ class ForgeEnv(DirectRLEnv):
             "/World/envs/env_.*/Table", cfg, translation=(0.55, 0.0, 0.0), orientation=(0.70711, 0.0, 0.0, 0.70711)
         )
 
-        # Visual-only props from robot profile (no physics, just rendering).
-        # STL/OBJ files are converted to USD on first run via MeshConverter.
+        # Visual-only props from robot profile (pre-converted USD files).
         if self.profile.visual_assets:
-            from isaaclab.sim.converters import MeshConverter, MeshConverterCfg
-
             for name, (asset_path, pos) in self.profile.visual_assets.items():
                 if not os.path.isfile(asset_path):
                     continue
-                # If source is STL/OBJ, convert to USD (cached next to source).
-                if asset_path.lower().endswith((".stl", ".obj", ".fbx")):
-                    usd_path = os.path.splitext(asset_path)[0] + ".usd"
-                    if not os.path.isfile(usd_path):
-                        usd_dir = os.path.dirname(usd_path)
-                        usd_name = os.path.basename(usd_path)
-                        mc_cfg = MeshConverterCfg(
-                            asset_path=asset_path,
-                            usd_dir=usd_dir,
-                            usd_file_name=usd_name,
-                            make_instanceable=False,
-                            scale=(0.001, 0.001, 0.001),  # mm -> m
-                            rotation = (0.7071, 0.0, 0.0, 0.7071)   # (w, x, y, z)
-                        )
-                        MeshConverter(mc_cfg)
-                    asset_path = usd_path
                 va_cfg = sim_utils.UsdFileCfg(usd_path=asset_path)
                 va_cfg.func(f"/World/envs/env_.*/{name}", va_cfg, translation=pos)
 
@@ -274,14 +180,14 @@ class ForgeEnv(DirectRLEnv):
             # so event configs referencing "held_asset"/"fixed_asset" still work.
             for i, pair in enumerate(ASSET_PAIRS):
                 suffix = f"_{i}" if i > 0 else ""
-                fixed_cfg = self._resolve_art_cfg(
+                fixed_cfg = self._clone_art_cfg(
                     pair["fixed_art"],
                     f"/World/envs/env_.*/FixedAsset{suffix}",
                 )
                 fixed_cfg.init_state.pos = self.cfg_task.fixed_asset.init_state.pos
                 self._fixed_assets.append(Articulation(fixed_cfg))
                 if self.profile.grasp_type == "gripper":
-                    held_cfg = self._resolve_art_cfg(
+                    held_cfg = self._clone_art_cfg(
                         pair["held_art"],
                         f"/World/envs/env_.*/HeldAsset{suffix}",
                     )
@@ -291,21 +197,20 @@ class ForgeEnv(DirectRLEnv):
         else:
             # Single-asset path: use first custom pair (index 1)
             pair = ASSET_PAIRS[1] if len(ASSET_PAIRS) > 1 else ASSET_PAIRS[0]
-            fixed_asset_cfg = pair["fixed_art"]
-            # Inherit position from task config (robot-specific placement)
-            fixed_asset_cfg.init_state.pos = self.cfg_task.fixed_asset.init_state.pos
-            fixed_usd = _ensure_usd(fixed_asset_cfg.spawn.usd_path)
-            if fixed_usd != fixed_asset_cfg.spawn.usd_path:
-                fixed_asset_cfg = self._replace_usd_path(fixed_asset_cfg, fixed_usd)
-            self._fixed_asset = Articulation(fixed_asset_cfg)
+            fixed_cfg = self._clone_art_cfg(
+                pair["fixed_art"],
+                "/World/envs/env_.*/FixedAsset",
+            )
+            fixed_cfg.init_state.pos = self.cfg_task.fixed_asset.init_state.pos
+            self._fixed_asset = Articulation(fixed_cfg)
             self._fixed_assets.append(self._fixed_asset)
 
             if self.profile.grasp_type == "gripper":
-                held_asset_cfg = pair["held_art"]
-                held_usd = _ensure_usd(held_asset_cfg.spawn.usd_path)
-                if held_usd != held_asset_cfg.spawn.usd_path:
-                    held_asset_cfg = self._replace_usd_path(held_asset_cfg, held_usd)
-                self._held_asset = Articulation(held_asset_cfg)
+                held_cfg = self._clone_art_cfg(
+                    pair["held_art"],
+                    "/World/envs/env_.*/HeldAsset",
+                )
+                self._held_asset = Articulation(held_cfg)
                 self._held_assets.append(self._held_asset)
             else:
                 self._held_asset = None
@@ -417,6 +322,48 @@ class ForgeEnv(DirectRLEnv):
 
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
+
+        # Patch collision meshes with SDF approximation at runtime.
+        # USDA-authored physics:approximation may not be picked up by PhysX;
+        # setting it via the pxr API ensures proper SDF collision for through-holes.
+        self._patch_sdf_collision()
+
+    def _patch_sdf_collision(self):
+        """Force SDF approximation on fixed-asset collision meshes via runtime pxr API.
+
+        USDA-authored physics:approximation is sometimes not recognized by PhysX.
+        This re-applies the schema and attribute through the pxr API to ensure
+        SDF collision works for through-holes on dynamic bodies.
+        """
+        import omni.usd
+        from pxr import UsdPhysics, PhysxSchema
+
+        stage = omni.usd.get_context().get_stage()
+        patched = 0
+        for prim in stage.Traverse():
+            # Only patch meshes under FixedAsset prims
+            path_str = str(prim.GetPath())
+            if "FixedAsset" not in path_str:
+                continue
+            if prim.GetTypeName() != "Mesh":
+                continue
+            # Apply/re-apply collision APIs and set SDF
+            if not prim.HasAPI(UsdPhysics.CollisionAPI):
+                UsdPhysics.CollisionAPI.Apply(prim)
+            if not prim.HasAPI(UsdPhysics.MeshCollisionAPI):
+                UsdPhysics.MeshCollisionAPI.Apply(prim)
+            mesh_api = UsdPhysics.MeshCollisionAPI(prim)
+            mesh_api.GetApproximationAttr().Set("sdf")
+            # Ensure collision is enabled
+            UsdPhysics.CollisionAPI(prim).GetCollisionEnabledAttr().Set(True)
+            # PhysX collision offsets
+            if not prim.HasAPI(PhysxSchema.PhysxCollisionAPI):
+                PhysxSchema.PhysxCollisionAPI.Apply(prim)
+            physx_col = PhysxSchema.PhysxCollisionAPI(prim)
+            physx_col.GetContactOffsetAttr().Set(0.005)
+            physx_col.GetRestOffsetAttr().Set(0.0)
+            patched += 1
+        carb.log_info(f"[Forge] Patched {patched} collision meshes with SDF approximation")
 
     def _spawn_peg_collision_on_ee(self):
         """Spawn peg as a collision-only prim child of the EE link.
