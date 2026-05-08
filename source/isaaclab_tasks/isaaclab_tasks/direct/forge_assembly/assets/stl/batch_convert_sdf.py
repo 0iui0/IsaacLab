@@ -58,6 +58,7 @@ def main():
         cfg = MeshConverterCfg(
             asset_path=stl_path,
             force_usd_conversion=True,
+            make_instanceable=False,
             usd_dir=os.path.dirname(usd_path),
             usd_file_name=os.path.basename(usd_path),
             mass_props=schemas_cfg.MassPropertiesCfg(mass=mass),
