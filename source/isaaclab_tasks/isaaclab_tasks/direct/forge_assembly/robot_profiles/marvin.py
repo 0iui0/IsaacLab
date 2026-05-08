@@ -161,7 +161,7 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
     # --- Visual-only assets ---
     visual_assets={
         "upper_body": (
-            f"{_FORGE_ASSET_DIR}/stl/000-upper-body.STL",
+            f"{_FORGE_ASSET_DIR}/stl/000-upper-body.usd",
             (0.0, 0.0, 0.0),
         ),
     },
