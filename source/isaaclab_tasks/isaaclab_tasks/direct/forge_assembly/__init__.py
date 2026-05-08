@@ -93,3 +93,13 @@ gym.register(
         "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
     },
 )
+
+gym.register(
+    id="Isaac-ForgeAssembly-MarvinPanda-PegInsertPair12-Direct-v0",
+    entry_point=f"{__name__}.forge_env:ForgeEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.forge_env_cfg:MarvinPandaForgeTaskPegInsertPair12Cfg",
+        "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg_finetune.yaml",
+    },
+)

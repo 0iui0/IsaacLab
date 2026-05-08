@@ -205,6 +205,10 @@ class ForgeEnvCfg(DirectRLEnvCfg):
     task_name: str = "peg_insert"
     episode_length_s: float = 10.0
 
+    # Subset of ASSET_PAIRS indices to use during training.
+    # None = use all pairs. [1, 2] = only pair1 + pair2 (interference fits).
+    asset_pair_indices: list | None = None
+
     obs_order: list = [
         "fingertip_pos_rel_fixed",
         "fingertip_quat",
@@ -349,6 +353,12 @@ class MarvinPandaForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
         hand_init_pos=[0.0, 0.0, 0.06],
         hand_init_pos_noise=[0.015, 0.015, 0.008],
     )
+
+
+@configclass
+class MarvinPandaForgeTaskPegInsertPair12Cfg(MarvinPandaForgeTaskPegInsertCfg):
+    """Fine-tune config: only pair1 + pair2 (interference fits), no factory loose fit."""
+    asset_pair_indices: list | None = [1, 2]
 
 
 # ---------------------------------------------------------------------------

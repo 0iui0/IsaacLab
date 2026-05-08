@@ -35,7 +35,7 @@ from isaaclab.utils.math import axis_angle_from_quat, skew_symmetric_matrix
 
 from . import forge_control, forge_utils
 from .forge_env_cfg import OBS_DIM_CFG, STATE_DIM_CFG, ForgeEnvCfg
-from .forge_tasks_cfg import ASSET_PAIRS
+from .forge_tasks_cfg import ASSET_PAIRS as _ALL_ASSET_PAIRS
 from .robot_profiles import RobotProfile
 
 
@@ -49,6 +49,13 @@ class ForgeEnv(DirectRLEnv):
         self.arm_slice = self.profile.arm_joint_ids
         self.gripper_slice = self.profile.gripper_joint_ids
         self.cfg_task = cfg.task
+
+        # Resolve asset pair subset from config.
+        if cfg.asset_pair_indices is not None:
+            ASSET_PAIRS = [_ALL_ASSET_PAIRS[i] for i in cfg.asset_pair_indices]
+        else:
+            ASSET_PAIRS = list(_ALL_ASSET_PAIRS)
+        self._asset_pairs = ASSET_PAIRS
 
         super().__init__(cfg, render_mode, **kwargs)
 
@@ -120,10 +127,10 @@ class ForgeEnv(DirectRLEnv):
             return
 
         stage = get_current_stage()
-        for i, pair in enumerate(ASSET_PAIRS):
-            if i == 0:
-                continue  # Factory USD assets have embedded material
-            suffix = f"_{i}"
+        for i, pair in enumerate(self._asset_pairs):
+            if not pair.get("fixed_material"):
+                continue
+            suffix = f"_{i}" if i > 0 else ""
             self._bind_pair_material(stage, self.num_envs, pair, "FixedAsset", suffix, "fixed_material")
             if self.profile.grasp_type == "gripper":
                 self._bind_pair_material(stage, self.num_envs, pair, "HeldAsset", suffix, "held_material")
@@ -171,14 +178,14 @@ class ForgeEnv(DirectRLEnv):
 
         # Multi-asset support: spawn all registered asset pairs for peg_insert.
         # For non-peg_insert tasks (gear_mesh, nut_thread), use the single task config.
-        self._num_asset_pairs = len(ASSET_PAIRS) if self.cfg_task.name == "peg_insert" else 1
+        self._num_asset_pairs = len(self._asset_pairs) if self.cfg_task.name == "peg_insert" else 1
         self._fixed_assets = []  # list of Articulation, one per pair
         self._held_assets = []   # list of Articulation or None, one per pair
 
         if self._num_asset_pairs > 1:
             # Spawn all asset pairs. Pair 0 uses standard prim paths (no suffix)
             # so event configs referencing "held_asset"/"fixed_asset" still work.
-            for i, pair in enumerate(ASSET_PAIRS):
+            for i, pair in enumerate(self._asset_pairs):
                 suffix = f"_{i}" if i > 0 else ""
                 fixed_cfg = self._clone_art_cfg(
                     pair["fixed_art"],
@@ -196,7 +203,7 @@ class ForgeEnv(DirectRLEnv):
                     self._held_assets.append(None)
         else:
             # Single-asset path: use first custom pair (index 1)
-            pair = ASSET_PAIRS[1] if len(ASSET_PAIRS) > 1 else ASSET_PAIRS[0]
+            pair = self._asset_pairs[1] if len(self._asset_pairs) > 1 else self._asset_pairs[0]
             fixed_cfg = self._clone_art_cfg(
                 pair["fixed_art"],
                 "/World/envs/env_.*/FixedAsset",
@@ -460,17 +467,17 @@ class ForgeEnv(DirectRLEnv):
     def _get_active_fixed_cfg(self) -> "FixedAssetCfg":
         """Return fixed_asset_cfg for the most common pair (used for reward dims)."""
         if self._num_asset_pairs <= 1:
-            idx = min(1, len(ASSET_PAIRS) - 1)
-            return ASSET_PAIRS[idx]["fixed_cfg"]
+            idx = min(1, len(self._asset_pairs) - 1)
+            return self._asset_pairs[idx]["fixed_cfg"]
         pair_idx = self.asset_pair_idx[0].item()
-        return ASSET_PAIRS[pair_idx]["fixed_cfg"]
+        return self._asset_pairs[pair_idx]["fixed_cfg"]
 
     def _get_active_held_cfg(self) -> "HeldAssetCfg":
         if self._num_asset_pairs <= 1:
-            idx = min(1, len(ASSET_PAIRS) - 1)
-            return ASSET_PAIRS[idx]["held_cfg"]
+            idx = min(1, len(self._asset_pairs) - 1)
+            return self._asset_pairs[idx]["held_cfg"]
         pair_idx = self.asset_pair_idx[0].item()
-        return ASSET_PAIRS[pair_idx]["held_cfg"]
+        return self._asset_pairs[pair_idx]["held_cfg"]
 
     # -----------------------------------------------------------------------
     # Initialization
@@ -481,10 +488,10 @@ class ForgeEnv(DirectRLEnv):
         if self._held_assets and any(h is not None for h in self._held_assets):
             for i, ha in enumerate(self._held_assets):
                 if ha is not None:
-                    pair_held_cfg = ASSET_PAIRS[i]["held_cfg"]
+                    pair_held_cfg = self._asset_pairs[i]["held_cfg"]
                     forge_utils.set_friction(ha, pair_held_cfg.friction, self.scene.num_envs)
         for i, fa in enumerate(self._fixed_assets):
-            pair_fixed_cfg = ASSET_PAIRS[i]["fixed_cfg"]
+            pair_fixed_cfg = self._asset_pairs[i]["fixed_cfg"]
             forge_utils.set_friction(fa, pair_fixed_cfg.friction, self.scene.num_envs)
         forge_utils.set_friction(self._robot, self.cfg_task.robot_cfg.friction, self.scene.num_envs)
 
@@ -594,7 +601,7 @@ class ForgeEnv(DirectRLEnv):
             # Hole top = fixed_pos + height along Z in hole frame
             hole_top_local = torch.zeros((self.num_envs, 3), device=self.device)
             if self._num_asset_pairs > 1:
-                for i, pair in enumerate(ASSET_PAIRS):
+                for i, pair in enumerate(self._asset_pairs):
                     mask = self.asset_pair_idx == i
                     if mask.any():
                         hole_top_local[mask, 2] = pair["fixed_cfg"].height
@@ -1410,7 +1417,7 @@ class ForgeEnv(DirectRLEnv):
         if self.gripper_slice is not None:
             if self.profile.has_gripper:
                 # Use max diameter across all pairs for a safe gripper opening
-                max_diam = max(p["held_cfg"].diameter for p in ASSET_PAIRS) if self._num_asset_pairs > 1 else self.cfg_task.held_asset_cfg.diameter
+                max_diam = max(p["held_cfg"].diameter for p in self._asset_pairs) if self._num_asset_pairs > 1 else self.cfg_task.held_asset_cfg.diameter
                 gripper_width = max_diam / 2 * 1.25
             else:
                 gripper_width = 0.0
@@ -1493,8 +1500,8 @@ class ForgeEnv(DirectRLEnv):
             held_asset_relative_pos = torch.zeros((self.num_envs, 3), device=self.device)
             if self._num_asset_pairs > 1:
                 # Per-env height based on asset_pair_idx
-                heights = torch.tensor([p["held_cfg"].height for p in ASSET_PAIRS], device=self.device)
-                grip_offsets = torch.tensor([p["held_cfg"].grip_offset for p in ASSET_PAIRS], device=self.device)
+                heights = torch.tensor([p["held_cfg"].height for p in self._asset_pairs], device=self.device)
+                grip_offsets = torch.tensor([p["held_cfg"].grip_offset for p in self._asset_pairs], device=self.device)
                 held_asset_relative_pos[:, 2] = heights[self.asset_pair_idx]
                 held_asset_relative_pos[:, 2] -= self.profile.fingerpad_length
                 held_asset_relative_pos[:, 2] += grip_offsets[self.asset_pair_idx]
@@ -1581,7 +1588,7 @@ class ForgeEnv(DirectRLEnv):
         fixed_tip_pos_local = torch.zeros((self.num_envs, 3), device=self.device)
         if self._num_asset_pairs > 1:
             # Use per-env height/base_height based on asset_pair_idx
-            for i, pair in enumerate(ASSET_PAIRS):
+            for i, pair in enumerate(self._asset_pairs):
                 mask = self.asset_pair_idx == i
                 if mask.any():
                     fixed_tip_pos_local[mask, 2] += pair["fixed_cfg"].height
