@@ -1,7 +1,6 @@
 """Batch convert STL files to USDC with SDF collision using MeshConverter.
 
-Runs inside Isaac Sim container. Converts all forge assembly STLs and adds
-ArticulationRootAPI to each output so they work with Isaac Lab's Articulation class.
+Runs inside Isaac Sim container. Uses original (non-simplified) STL files.
 
 Usage (inside container):
     /isaac-sim/python.sh batch_convert_sdf.py --headless
@@ -9,7 +8,6 @@ Usage (inside container):
 
 import argparse
 import os
-import sys
 
 from isaaclab.app import AppLauncher
 
@@ -20,7 +18,7 @@ args_cli = parser.parse_args()
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-from pxr import Sdf, Usd, UsdPhysics
+from pxr import Usd, UsdPhysics
 
 from isaaclab.sim.converters import MeshConverter, MeshConverterCfg
 from isaaclab.sim.schemas import schemas_cfg
@@ -29,8 +27,8 @@ STL_DIR = args_cli.stl_dir
 LOG_FILE = os.path.join(STL_DIR, "conversion_log.txt")
 
 CONVERSIONS = [
-    ("pair1_fixed_collision.stl", "pair1_fixed.usd", 0.101),
-    ("pair2_fixed_collision.stl", "pair2_fixed.usd", 0.100),
+    ("pair1_fixed.stl", "pair1_fixed.usd", 0.101),
+    ("pair2_fixed.stl", "pair2_fixed.usd", 0.100),
     ("pair1_peg.stl", "pair1_peg.usd", 0.032),
     ("pair2_peg.stl", "pair2_peg.usd", 0.014),
 ]
@@ -80,10 +78,6 @@ def main():
                 if not default_prim.HasAPI(UsdPhysics.ArticulationRootAPI):
                     default_prim.ApplyAPI(UsdPhysics.ArticulationRootAPI)
                     log(f"Added ArticulationRootAPI to {default_prim.GetPath()}")
-                else:
-                    log(f"ArticulationRootAPI already on {default_prim.GetPath()}")
-            else:
-                log(f"WARNING: no default prim in {usd_name}")
             asset_stage.Save()
             log(f"Saved: {usd_path} ({os.path.getsize(usd_path):,} bytes)")
         except Exception as e:
