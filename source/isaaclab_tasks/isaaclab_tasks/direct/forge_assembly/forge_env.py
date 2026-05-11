@@ -741,12 +741,14 @@ class ForgeEnv(DirectRLEnv):
             force_noise = torch.randn((self.num_envs, 3), dtype=torch.float32, device=self.device)
             force_noise *= self.cfg.obs_rand.ft_force
             self.noisy_force = self.force_sensor_smooth[:, 0:3] + force_noise
-            # torque_noise = torch.randn((self.num_envs, 3), dtype=torch.float32, device=self.device)
-            # torque_noise *= self.cfg.obs_rand.ft_force
-            # self.noisy_torque = self.force_sensor_smooth[:, 3:6] + torque_noise
+            if self.cfg.use_ft_torque:
+                torque_noise = torch.randn((self.num_envs, 3), dtype=torch.float32, device=self.device)
+                torque_noise *= self.cfg.obs_rand.ft_force
+                self.noisy_torque = self.force_sensor_smooth[:, 3:6] + torque_noise
         else:
             self.noisy_force = torch.zeros((self.num_envs, 3), device=self.device)
-            # self.noisy_torque = torch.zeros((self.num_envs, 3), device=self.device)
+            if self.cfg.use_ft_torque:
+                self.noisy_torque = torch.zeros((self.num_envs, 3), device=self.device)
 
         # Draw force visualization arrows after all sensor data is updated.
         if self.force_sensor_body_idx is not None or self._contact_sensor.is_initialized:
@@ -836,20 +838,22 @@ class ForgeEnv(DirectRLEnv):
                 "fingertip_quat": self.noisy_ee_quat,
                 "force_threshold": self.contact_penalty_thresholds[:, None],
                 "ft_force": self.noisy_force,
-                # "ft_torque": self.noisy_torque,  # Ablation: uncomment for 6-axis F/T
                 "prev_actions": prev_actions,
             }
         )
+        if self.cfg.use_ft_torque:
+            obs_dict["ft_torque"] = self.noisy_torque
 
         state_dict.update(
             {
                 "ema_factor": self.ema_factor,
                 "ft_force": self.force_sensor_smooth[:, 0:3] if (self.force_sensor_body_idx is not None or self.profile.grasp_type == "fixed_peg") else torch.zeros((self.num_envs, 3), device=self.device),
-                # "ft_torque": self.force_sensor_smooth[:, 3:6] if (self.force_sensor_body_idx is not None or self.profile.grasp_type == "fixed_peg") else torch.zeros((self.num_envs, 3), device=self.device),
                 "force_threshold": self.contact_penalty_thresholds[:, None],
                 "prev_actions": prev_actions,
             }
         )
+        if self.cfg.use_ft_torque:
+            state_dict["ft_torque"] = self.force_sensor_smooth[:, 3:6] if (self.force_sensor_body_idx is not None or self.profile.grasp_type == "fixed_peg") else torch.zeros((self.num_envs, 3), device=self.device)
 
         obs_tensors = forge_utils.collapse_obs_dict(obs_dict, self.cfg.obs_order + ["prev_actions"])
         state_tensors = forge_utils.collapse_obs_dict(state_dict, self.cfg.state_order + ["prev_actions"])

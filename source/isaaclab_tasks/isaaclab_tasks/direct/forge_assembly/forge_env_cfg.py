@@ -204,6 +204,9 @@ class ForgeEnvCfg(DirectRLEnvCfg):
 
     ft_smoothing_factor: float = 0.25
 
+    # Ablation: include torque in observations (27D) or not (24D).
+    use_ft_torque: bool = False
+
     task_name: str = "peg_insert"
     episode_length_s: float = 10.0
 
@@ -243,6 +246,35 @@ class ForgeEnvCfg(DirectRLEnvCfg):
     def __post_init__(self):
         # Compute observation/state spaces from profile-driven dimensions.
         STATE_DIM_CFG["joint_pos"] = self.robot_profile.num_arm_joints
+        if self.use_ft_torque:
+            self.obs_order = [
+                "fingertip_pos_rel_fixed",
+                "fingertip_quat",
+                "ee_linvel",
+                "ee_angvel",
+                "ft_force",
+                "ft_torque",
+                "force_threshold",
+            ]
+            self.state_order = [
+                "fingertip_pos",
+                "fingertip_quat",
+                "ee_linvel",
+                "ee_angvel",
+                "joint_pos",
+                "held_pos",
+                "held_pos_rel_fixed",
+                "held_quat",
+                "fixed_pos",
+                "fixed_quat",
+                "task_prop_gains",
+                "ema_factor",
+                "ft_force",
+                "ft_torque",
+                "pos_threshold",
+                "rot_threshold",
+                "force_threshold",
+            ]
         self.observation_space = sum(OBS_DIM_CFG[obs] for obs in self.obs_order) + self.action_space
         self.state_space = sum(STATE_DIM_CFG[state] for state in self.state_order) + self.action_space
 
@@ -363,6 +395,18 @@ class MarvinPandaForgeTaskPegInsertCfg(ForgeTaskPegInsertCfg):
 class MarvinPandaForgeTaskPegInsertPair12Cfg(MarvinPandaForgeTaskPegInsertCfg):
     """Fine-tune config: pair1 + pair2 + pair3 (interference fits), no factory loose fit."""
     asset_pair_indices: list | None = [1, 2, 3]
+
+
+@configclass
+class MarvinPandaAblationBCfg(MarvinPandaForgeTaskPegInsertPair12Cfg):
+    """Ablation B: 3-axis force (fx,fy,fz) from EE link. 24D obs."""
+    use_ft_torque: bool = False
+
+
+@configclass
+class MarvinPandaAblationCCfg(MarvinPandaForgeTaskPegInsertPair12Cfg):
+    """Ablation C: 6-axis F/T (fx,fy,fz + tx,ty,tz). 27D obs."""
+    use_ft_torque: bool = True
 
 
 # ---------------------------------------------------------------------------
