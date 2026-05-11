@@ -36,7 +36,7 @@ OBS_DIM_CFG = {
     "ee_angvel": 3,
     "force_threshold": 1,
     "ft_force": 3,
-    # "ft_torque": 3,  # Ablation: uncomment for 6-axis F/T experiment
+    "ft_torque": 3,
 }
 
 STATE_DIM_CFG = {
@@ -57,7 +57,7 @@ STATE_DIM_CFG = {
     "rot_threshold": 3,
     "force_threshold": 1,
     "ft_force": 3,
-    # "ft_torque": 3,  # Ablation: uncomment for 6-axis F/T experiment
+    "ft_torque": 3,
 }
 
 
@@ -407,6 +407,27 @@ class MarvinPandaAblationBCfg(MarvinPandaForgeTaskPegInsertPair12Cfg):
 class MarvinPandaAblationCCfg(MarvinPandaForgeTaskPegInsertPair12Cfg):
     """Ablation C: 6-axis F/T (fx,fy,fz + tx,ty,tz). 27D obs."""
     use_ft_torque: bool = True
+    sim: SimulationCfg = SimulationCfg(
+        device="cuda:1",
+        dt=1 / 120,
+        gravity=(0.0, 0.0, -9.81),
+        physx=PhysxCfg(
+            solver_type=1,
+            max_position_iteration_count=192,
+            max_velocity_iteration_count=1,
+            bounce_threshold_velocity=0.2,
+            friction_offset_threshold=0.01,
+            friction_correlation_distance=0.00625,
+            gpu_max_rigid_contact_count=2**23,
+            gpu_max_rigid_patch_count=2**23,
+            gpu_collision_stack_size=2**31,
+            gpu_max_num_partitions=1,
+        ),
+        physics_material=RigidBodyMaterialCfg(
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
