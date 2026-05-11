@@ -78,6 +78,8 @@ class ForgeEnv(DirectRLEnv):
         self.force_sensor_body_idx = None
         self.force_sensor_smooth = torch.zeros((self.num_envs, 6), device=self.device)
         self.force_sensor_world_smooth = torch.zeros((self.num_envs, 6), device=self.device)
+        self.noisy_force = torch.zeros((self.num_envs, 3), device=self.device)
+        self.noisy_torque = torch.zeros((self.num_envs, 3), device=self.device)
 
         # Peg tip / hole top positions for direct success check (fixed-peg robots)
         self.peg_tip_pos = torch.zeros((self.num_envs, 3), device=self.device)

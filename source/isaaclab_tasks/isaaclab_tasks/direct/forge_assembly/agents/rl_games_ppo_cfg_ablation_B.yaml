@@ -51,6 +51,7 @@ params:
   config:
     name: Forge_Ablation_B
     device: cuda:0
+    device_name: cuda:0
     full_experiment_name: ablation_B_3axis_force
     env_name: rlgpu
     multi_gpu: False
