@@ -747,6 +747,13 @@ class ForgeEnv(DirectRLEnv):
                 torque_noise = torch.randn((self.num_envs, 3), dtype=torch.float32, device=self.device)
                 torque_noise *= self.cfg.obs_rand.ft_force
                 self.noisy_torque = self.force_sensor_smooth[:, 3:6] + torque_noise
+            # DEBUG: print force data once at step 50
+            if not hasattr(self, '_ft_debug_printed'):
+                self._ft_debug_printed = True
+                fnorm = torch.norm(self.force_sensor_smooth[:, 0:3], dim=1).mean().item()
+                print(f"[FT-DEBUG] fsbi={self.force_sensor_body_idx} force_norm_mean={fnorm:.6f} "
+                      f"force[:1]={self.force_sensor_smooth[0,:3].detach().cpu().tolist()} "
+                      f"torque[:1]={self.force_sensor_smooth[0,3:6].detach().cpu().tolist()}", flush=True)
         else:
             self.noisy_force = torch.zeros((self.num_envs, 3), device=self.device)
             if self.cfg.use_ft_torque:
@@ -1829,6 +1836,18 @@ class ForgeEnv(DirectRLEnv):
         """Log metrics to evaluate success prediction performance."""
         for rew_name, rew in rew_dict.items():
             self.extras[f"logs_rew_{rew_name}"] = rew.mean()
+
+        # Log 6-axis force/torque sensor data
+        if self.force_sensor_body_idx is not None:
+            ft = self.force_sensor_smooth  # (N, 6): [fx,fy,fz,tx,ty,tz]
+            self.extras["ft_sensor/fx"] = ft[:, 0].mean()
+            self.extras["ft_sensor/fy"] = ft[:, 1].mean()
+            self.extras["ft_sensor/fz"] = ft[:, 2].mean()
+            self.extras["ft_sensor/tx"] = ft[:, 3].mean()
+            self.extras["ft_sensor/ty"] = ft[:, 4].mean()
+            self.extras["ft_sensor/tz"] = ft[:, 5].mean()
+            self.extras["ft_sensor/force_norm"] = torch.norm(ft[:, :3], dim=1).mean()
+            self.extras["ft_sensor/torque_norm"] = torch.norm(ft[:, 3:6], dim=1).mean()
 
         for thresh, first_success_tx in self.first_pred_success_tx.items():
             curr_predicted_success = policy_success_pred > thresh
