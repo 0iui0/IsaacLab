@@ -745,7 +745,7 @@ class ForgeEnv(DirectRLEnv):
             self.noisy_force = self.force_sensor_smooth[:, 0:3] + force_noise
             if self.cfg.use_ft_torque:
                 torque_noise = torch.randn((self.num_envs, 3), dtype=torch.float32, device=self.device)
-                torque_noise *= self.cfg.obs_rand.ft_force
+                torque_noise *= self.cfg.obs_rand.ft_torque
                 self.noisy_torque = self.force_sensor_smooth[:, 3:6] + torque_noise
             # DEBUG: print force data once at step 50
             if not hasattr(self, '_ft_debug_printed'):
@@ -1840,14 +1840,14 @@ class ForgeEnv(DirectRLEnv):
         # Log 6-axis force/torque sensor data
         if self.force_sensor_body_idx is not None:
             ft = self.force_sensor_smooth  # (N, 6): [fx,fy,fz,tx,ty,tz]
-            self.extras["ft_sensor/fx"] = ft[:, 0].mean()
-            self.extras["ft_sensor/fy"] = ft[:, 1].mean()
-            self.extras["ft_sensor/fz"] = ft[:, 2].mean()
-            self.extras["ft_sensor/tx"] = ft[:, 3].mean()
-            self.extras["ft_sensor/ty"] = ft[:, 4].mean()
-            self.extras["ft_sensor/tz"] = ft[:, 5].mean()
-            self.extras["ft_sensor/force_norm"] = torch.norm(ft[:, :3], dim=1).mean()
-            self.extras["ft_sensor/torque_norm"] = torch.norm(ft[:, 3:6], dim=1).mean()
+            self.extras["ft_sensor/fx"] = ft[:, 0].mean().item()
+            self.extras["ft_sensor/fy"] = ft[:, 1].mean().item()
+            self.extras["ft_sensor/fz"] = ft[:, 2].mean().item()
+            self.extras["ft_sensor/tx"] = ft[:, 3].mean().item()
+            self.extras["ft_sensor/ty"] = ft[:, 4].mean().item()
+            self.extras["ft_sensor/tz"] = ft[:, 5].mean().item()
+            self.extras["ft_sensor/force_norm"] = torch.norm(ft[:, :3], dim=1).mean().item()
+            self.extras["ft_sensor/torque_norm"] = torch.norm(ft[:, 3:6], dim=1).mean().item()
 
         for thresh, first_success_tx in self.first_pred_success_tx.items():
             curr_predicted_success = policy_success_pred > thresh

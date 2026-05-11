@@ -121,6 +121,7 @@ class ForgeObsRandCfg(ObsRandCfg):
     fingertip_pos: float = 0.00025
     fingertip_rot_deg: float = 0.1
     ft_force: float = 1.0
+    ft_torque: float = 0.1
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +409,7 @@ class MarvinPandaAblationCCfg(MarvinPandaForgeTaskPegInsertPair12Cfg):
     """Ablation C: 6-axis F/T (fx,fy,fz + tx,ty,tz). 27D obs."""
     use_ft_torque: bool = True
     sim: SimulationCfg = SimulationCfg(
-        device="cuda:1",
+        device="cuda:0",
         dt=1 / 120,
         gravity=(0.0, 0.0, -9.81),
         physx=PhysxCfg(

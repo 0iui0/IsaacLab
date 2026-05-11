@@ -1,14 +1,29 @@
-"""Monitor Forge Pair12 training progress from TensorBoard logs."""
+"""Monitor Forge Ablation B/C training progress from TensorBoard logs."""
 
+import argparse
 import os
 import subprocess
 
-LOG_DIR = "/workspace/isaaclab/logs/rl_games/Forge_Pair123/finetune_pair123"
-MAX_EPOCHS = 500
+EXPERIMENTS = {
+    "B": {
+        "log_dir": "/workspace/isaaclab/logs/rl_games/Forge_Ablation_B/ablation_B_3axis_force",
+        "container": "isaac-lab-task-main",
+        "gpu": 0,
+        "max_epochs": 100,
+        "pattern": "AblationB",
+    },
+    "C": {
+        "log_dir": "/workspace/isaaclab/logs/rl_games/Forge_Ablation_C/ablation_C_6axis_ft",
+        "container": "isaac-lab-task-c",
+        "gpu": 1,
+        "max_epochs": 100,
+        "pattern": "AblationC",
+    },
+}
 
 
-def _read_latest(tag: str, ea, available_tags: set) -> dict | None:
-    if tag not in available_tags:
+def _read_latest(tag, ea, available):
+    if tag not in available:
         return None
     events = ea.Scalars(tag)
     if not events:
@@ -17,146 +32,113 @@ def _read_latest(tag: str, ea, available_tags: set) -> dict | None:
     return {"step": e.step, "value": e.value}
 
 
-def check_process():
+def check_process(container, pattern):
     r = subprocess.run(
-        ["pgrep", "-f", "train.py.*Pair12"], capture_output=True, text=True
+        ["docker", "exec", container, "pgrep", "-f", f"train.py.*{pattern}"],
+        capture_output=True, text=True,
     )
     return r.stdout.strip() != ""
 
 
-def main():
+def monitor_experiment(name, cfg):
     from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
-    print("=" * 60)
-    print("Forge Pair12 Training Monitor")
-    print("=" * 60)
-
-    running = check_process()
+    summaries_dir = os.path.join(cfg["log_dir"], "summaries")
+    running = check_process(cfg["container"], cfg["pattern"])
     status = "RUNNING" if running else "STOPPED"
-    print(f"Process: {status}")
 
-    # Point to summaries dir where event files actually live
-    summaries_dir = os.path.join(LOG_DIR, "summaries")
+    print(f"  [{name}] Status: {status}")
+
+    if not os.path.exists(summaries_dir):
+        print(f"  [{name}] No data yet.")
+        return
+
     ea = EventAccumulator(summaries_dir, size_guidance={"scalars": 0})
     ea.Reload()
     tags = ea.Tags().get("scalars", [])
     available = set(tags)
     if not tags:
-        print("No data yet (training may still be initializing).")
-        print("=" * 60)
+        print(f"  [{name}] No TensorBoard data yet.")
         return
 
-    # -- Key metrics --
     metrics = {}
 
-    # Reward
-    r = _read_latest("rewards/iter", ea, available)
-    if r:
-        metrics["reward/mean"] = r["value"]
-        metrics["reward/step"] = r["step"]
-
-    sr = _read_latest("shaped_rewards/iter", ea, available)
-    if sr:
-        metrics["shaped_reward/mean"] = sr["value"]
-
-    # Success rate
-    s = _read_latest("successes/iter", ea, available)
-    if s:
-        metrics["success_rate"] = s["value"]
-
-    st = _read_latest("success_times/iter", ea, available)
-    if st:
-        metrics["success_time/mean"] = st["value"]
+    # Core metrics
+    for tag, key in [
+        ("rewards/iter", "reward"),
+        ("successes/iter", "success_rate"),
+        ("info/epochs", "epoch"),
+        ("performance/step_fps", "fps"),
+        ("shaped_rewards/iter", "shaped_reward"),
+        ("episode_lengths/iter", "ep_length"),
+    ]:
+        v = _read_latest(tag, ea, available)
+        if v:
+            metrics[key] = v["value"]
 
     # Reward components
     for comp in ["kp_baseline", "kp_coarse", "kp_fine", "action_penalty_ee",
                  "action_grad_penalty", "curr_engaged", "curr_success",
-                 "action_penalty_asset", "contact_penalty", "success_pred_error"]:
+                 "action_penalty_asset", "contact_penalty"]:
         key = f"logs_rew_{comp}/iter"
         v = _read_latest(key, ea, available)
         if v:
             metrics[f"rew/{comp}"] = v["value"]
 
-    # Losses
-    for loss in ["a_loss", "c_loss", "entropy", "bounds_loss", "cval_loss"]:
-        v = _read_latest(f"losses/{loss}", ea, available)
+    # F/T sensor data
+    for ft in ["fx", "fy", "fz", "tx", "ty", "tz", "force_norm", "torque_norm"]:
+        key = f"ft_sensor/{ft}/iter"
+        v = _read_latest(key, ea, available)
         if v:
-            metrics[f"loss/{loss}"] = v["value"]
+            metrics[f"ft/{ft}"] = v["value"]
 
-    # Learning rate
-    lr = _read_latest("info/last_lr", ea, available)
-    if lr:
-        metrics["lr"] = lr["value"]
-
-    kl = _read_latest("info/kl", ea, available)
-    if kl:
-        metrics["kl"] = kl["value"]
-
-    # Epoch
-    ep = _read_latest("info/epochs", ea, available)
-    if ep:
-        metrics["epoch"] = ep["value"]
-
-    # Performance
-    fps = _read_latest("performance/step_fps", ea, available)
-    if fps:
-        metrics["step_fps"] = fps["value"]
-
-    # Episode length
-    el = _read_latest("episode_lengths/iter", ea, available)
-    if el:
-        metrics["episode_length/mean"] = el["value"]
-
-    # Early termination precision/recall at 0.5
-    for thresh in ["0.5", "0.7", "0.9"]:
-        p = _read_latest(f"early_term_precision/{thresh}/iter", ea, available)
-        rc = _read_latest(f"early_term_recall/{thresh}/iter", ea, available)
-        if p:
-            metrics[f"early_prec/{thresh}"] = p["value"]
-        if rc:
-            metrics[f"early_recall/{thresh}"] = rc["value"]
-
-    # -- Print --
+    # Print
     epoch = metrics.get("epoch", "?")
-    print(f"\nEpoch: {epoch} / {MAX_EPOCHS}")
-    print(f"Step FPS: {metrics.get('step_fps', '?')}")
+    print(f"  [{name}] Epoch: {epoch}/{cfg['max_epochs']}  Reward: {metrics.get('reward', '?'):.2f}  "
+          f"Success: {metrics.get('success_rate', 0):.2%}  FPS: {metrics.get('fps', '?'):.1f}")
 
-    print(f"\n{'--- Rewards ---':^60}")
-    for k in ["reward/mean", "shaped_reward/mean", "success_rate",
-              "success_time/mean", "episode_length/mean"]:
+    # F/T sensor
+    ft_keys = [k for k in metrics if k.startswith("ft/")]
+    if ft_keys:
+        ft_str = "  ".join(f"{k.split('/')[1]}={metrics[k]:.4f}" for k in ft_keys)
+        print(f"  [{name}] FT: {ft_str}")
+    else:
+        print(f"  [{name}] FT: no ft_sensor data yet")
+
+    # Key reward components
+    for k in ["rew/kp_fine", "rew/contact_penalty", "rew/curr_success"]:
         if k in metrics:
-            v = metrics[k]
-            print(f"  {k:<35} {v:>12.4f}")
-
-    print(f"\n{'--- Reward Components ---':^60}")
-    for k, v in sorted(metrics.items()):
-        if k.startswith("rew/"):
-            print(f"  {k:<35} {v:>12.6f}")
-
-    print(f"\n{'--- Losses & Training ---':^60}")
-    for k in ["loss/a_loss", "loss/c_loss", "loss/cval_loss", "loss/entropy",
-              "loss/bounds_loss", "lr", "kl"]:
-        if k in metrics:
-            v = metrics[k]
-            print(f"  {k:<35} {v:>12.6f}")
-
-    print(f"\n{'--- Early Termination ---':^60}")
-    for k, v in sorted(metrics.items()):
-        if k.startswith("early_"):
-            print(f"  {k:<35} {v:>12.4f}")
+            pass  # already collected
 
     # Checkpoints
-    nn_dir = os.path.join(LOG_DIR, "nn")
+    nn_dir = os.path.join(cfg["log_dir"], "nn")
     if os.path.isdir(nn_dir):
         ckpts = [f for f in os.listdir(nn_dir) if f.endswith(".pth")]
         if ckpts:
-            print(f"\nCheckpoints saved: {len(ckpts)} files")
-            for f in sorted(ckpts):
-                size = os.path.getsize(os.path.join(nn_dir, f))
-                print(f"  {f} ({size / 1024 / 1024:.1f} MB)")
+            print(f"  [{name}] Checkpoints: {len(ckpts)} files")
 
-    if not running:
-        print("\n*** Training appears to have STOPPED. ***")
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--exp", choices=["B", "C", "all"], default="all")
+    args = parser.parse_args()
+
+    print("=" * 60)
+    print("Forge Ablation Training Monitor")
+    print("=" * 60)
+
+    # GPU status
+    r = subprocess.run(
+        ["nvidia-smi", "--query-gpu=index,memory.used,memory.total", "--format=csv,noheader"],
+        capture_output=True, text=True,
+    )
+    print(f"\nGPU: {r.stdout.strip()}")
+
+    experiments = EXPERIMENTS if args.exp == "all" else {args.exp: EXPERIMENTS[args.exp]}
+    print()
+    for name, cfg in experiments.items():
+        monitor_experiment(name, cfg)
+        print()
 
     print("=" * 60)
 
