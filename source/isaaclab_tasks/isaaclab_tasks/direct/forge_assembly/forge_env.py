@@ -1837,17 +1837,17 @@ class ForgeEnv(DirectRLEnv):
         for rew_name, rew in rew_dict.items():
             self.extras[f"logs_rew_{rew_name}"] = rew.mean()
 
-        # Log 6-axis force/torque sensor data
-        if self.force_sensor_body_idx is not None:
-            ft = self.force_sensor_smooth  # (N, 6): [fx,fy,fz,tx,ty,tz]
-            self.extras["ft_sensor/fx"] = ft[:, 0].mean().item()
-            self.extras["ft_sensor/fy"] = ft[:, 1].mean().item()
-            self.extras["ft_sensor/fz"] = ft[:, 2].mean().item()
-            self.extras["ft_sensor/tx"] = ft[:, 3].mean().item()
-            self.extras["ft_sensor/ty"] = ft[:, 4].mean().item()
-            self.extras["ft_sensor/tz"] = ft[:, 5].mean().item()
-            self.extras["ft_sensor/force_norm"] = torch.norm(ft[:, :3], dim=1).mean().item()
-            self.extras["ft_sensor/torque_norm"] = torch.norm(ft[:, 3:6], dim=1).mean().item()
+        # Log 6-axis force/torque sensor data (always, even if zero)
+        ft = self.force_sensor_smooth  # (N, 6): [fx,fy,fz,tx,ty,tz]
+        self.extras["ft_sensor/fx"] = ft[:, 0].mean().item()
+        self.extras["ft_sensor/fy"] = ft[:, 1].mean().item()
+        self.extras["ft_sensor/fz"] = ft[:, 2].mean().item()
+        self.extras["ft_sensor/tx"] = ft[:, 3].mean().item()
+        self.extras["ft_sensor/ty"] = ft[:, 4].mean().item()
+        self.extras["ft_sensor/tz"] = ft[:, 5].mean().item()
+        self.extras["ft_sensor/force_norm"] = torch.norm(ft[:, :3], dim=1).mean().item()
+        self.extras["ft_sensor/torque_norm"] = torch.norm(ft[:, 3:6], dim=1).mean().item()
+        self.extras["ft_sensor/body_idx"] = self.force_sensor_body_idx if self.force_sensor_body_idx is not None else -1
 
         for thresh, first_success_tx in self.first_pred_success_tx.items():
             curr_predicted_success = policy_success_pred > thresh
