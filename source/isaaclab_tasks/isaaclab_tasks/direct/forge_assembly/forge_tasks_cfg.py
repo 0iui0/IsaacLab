@@ -206,10 +206,10 @@ def _make_fixed_asset_cfg(
             usd_path=usd_path,
             activate_contact_sensors=True,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                disable_gravity=False,
-                max_depenetration_velocity=5.0,
-                linear_damping=10.0,
-                angular_damping=10.0,
+                disable_gravity=True,
+                max_depenetration_velocity=0.1,
+                linear_damping=100.0,
+                angular_damping=100.0,
                 max_linear_velocity=1000.0,
                 max_angular_velocity=3666.0,
                 enable_gyroscopic_forces=True,
@@ -245,7 +245,7 @@ class ForgePegInsert(ForgeTask):
     hand_init_orn: list = [3.1416, 0.0, 0.0]
     hand_init_orn_noise: list = [0.0, 0.0, 0.785]
 
-    fixed_asset_init_pos_noise: list = [0.05, 0.05, 0.05]
+    fixed_asset_init_pos_noise: list = [0.05, 0.05, 0.005]
     fixed_asset_init_orn_deg: float = 0.0
     fixed_asset_init_orn_range_deg: float = 360.0
 

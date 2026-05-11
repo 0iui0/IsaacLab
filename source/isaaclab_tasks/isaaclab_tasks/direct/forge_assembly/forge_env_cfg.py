@@ -36,6 +36,7 @@ OBS_DIM_CFG = {
     "ee_angvel": 3,
     "force_threshold": 1,
     "ft_force": 3,
+    # "ft_torque": 3,  # Ablation: uncomment for 6-axis F/T experiment
 }
 
 STATE_DIM_CFG = {
@@ -56,6 +57,7 @@ STATE_DIM_CFG = {
     "rot_threshold": 3,
     "force_threshold": 1,
     "ft_force": 3,
+    # "ft_torque": 3,  # Ablation: uncomment for 6-axis F/T experiment
 }
 
 
@@ -215,6 +217,7 @@ class ForgeEnvCfg(DirectRLEnvCfg):
         "ee_linvel",
         "ee_angvel",
         "ft_force",
+        # "ft_torque",  # Ablation: uncomment for 6-axis F/T experiment
         "force_threshold",
     ]
     state_order: list = [
@@ -231,6 +234,7 @@ class ForgeEnvCfg(DirectRLEnvCfg):
         "task_prop_gains",
         "ema_factor",
         "ft_force",
+        # "ft_torque",  # Ablation: uncomment for 6-axis F/T experiment
         "pos_threshold",
         "rot_threshold",
         "force_threshold",
