@@ -517,7 +517,8 @@ class ForgeEnv(DirectRLEnv):
             if self.profile.force_sensor_body_name in self._robot.body_names:
                 self.force_sensor_body_idx = self._robot.body_names.index(self.profile.force_sensor_body_name)
             else:
-                self.force_sensor_body_idx = None
+                # Fallback to EE body when named sensor link is absent
+                self.force_sensor_body_idx = self.ee_body_idx
         else:
             self.force_sensor_body_idx = None
 
