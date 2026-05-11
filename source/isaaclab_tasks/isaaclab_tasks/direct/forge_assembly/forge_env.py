@@ -74,8 +74,8 @@ class ForgeEnv(DirectRLEnv):
         # Debug: step counter for periodic exploration stats
         self._debug_step_count = 0
 
-        # Force sensor - body index will be set in _init_tensors after scene setup
-        self.force_sensor_body_idx = None
+        # Force sensor tensors - body index is set in _init_tensors after scene setup
+        # Note: Do NOT initialize force_sensor_body_idx here; it's set in _init_tensors()
         self.force_sensor_smooth = torch.zeros((self.num_envs, 6), device=self.device)
         self.force_sensor_world_smooth = torch.zeros((self.num_envs, 6), device=self.device)
         self.noisy_force = torch.zeros((self.num_envs, 3), device=self.device)
