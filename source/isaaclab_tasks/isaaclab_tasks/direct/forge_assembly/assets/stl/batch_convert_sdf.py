@@ -27,10 +27,8 @@ STL_DIR = args_cli.stl_dir
 LOG_FILE = os.path.join(STL_DIR, "conversion_log.txt")
 
 CONVERSIONS = [
-    ("pair1_fixed.stl", "pair1_fixed.usd", 0.101),
-    ("pair2_fixed.stl", "pair2_fixed.usd", 0.100),
-    ("pair1_peg.stl", "pair1_peg.usd", 0.032),
-    ("pair2_peg.stl", "pair2_peg.usd", 0.014),
+    ("pair3_fixed.stl", "pair3_fixed.usd", 0.5),
+    ("pair3_peg.stl", "pair3_peg.usd", 0.020),
 ]
 
 

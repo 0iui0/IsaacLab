@@ -3,7 +3,7 @@
 import os
 import subprocess
 
-LOG_DIR = "/workspace/isaaclab/logs/rl_games/Forge_Pair12/finetune_pair12"
+LOG_DIR = "/workspace/isaaclab/logs/rl_games/Forge_Pair123/finetune_pair123"
 MAX_EPOCHS = 500
 
 

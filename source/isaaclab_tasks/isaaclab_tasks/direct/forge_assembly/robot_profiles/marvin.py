@@ -93,10 +93,10 @@ MARVIN_PANDA_FORGE_PROFILE = RobotProfile(
             # Franka Panda gripper actuators (matching Franka profile)
             "panda_hand": ImplicitActuatorCfg(
                 joint_names_expr=["panda_finger_joint[1-2]"],
-                effort_limit_sim=40.0,
+                effort_limit_sim=200.0,
                 velocity_limit_sim=0.04,
-                stiffness=7500.0,
-                damping=173.0,
+                stiffness=20000.0,
+                damping=500.0,
                 friction=0.1,
                 armature=0.0,
             ),

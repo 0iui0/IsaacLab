@@ -208,8 +208,8 @@ def _make_fixed_asset_cfg(
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=False,
                 max_depenetration_velocity=5.0,
-                linear_damping=0.0,
-                angular_damping=0.0,
+                linear_damping=10.0,
+                angular_damping=10.0,
                 max_linear_velocity=1000.0,
                 max_angular_velocity=3666.0,
                 enable_gyroscopic_forces=True,
@@ -402,7 +402,7 @@ ASSET_PAIRS: list[dict] = [
             "/World/envs/env_.*/HeldAsset", _asset_path("pair1_peg.usd"), 0.032, disable_gravity=True
         ),
         "fixed_art": _make_fixed_asset_cfg(
-            "/World/envs/env_.*/FixedAsset", _asset_path("pair1_fixed.usd"), 0.101
+            "/World/envs/env_.*/FixedAsset", _asset_path("pair1_fixed.usd"), 0.5
         ),
         "held_material": {
             "diffuse_color": (0.78, 0.78, 0.8),  # stainless steel
@@ -435,7 +435,7 @@ ASSET_PAIRS: list[dict] = [
             "/World/envs/env_.*/HeldAsset", _asset_path("pair2_peg.usd"), 0.014, disable_gravity=True
         ),
         "fixed_art": _make_fixed_asset_cfg(
-            "/World/envs/env_.*/FixedAsset", _asset_path("pair2_fixed.usd"), 0.100
+            "/World/envs/env_.*/FixedAsset", _asset_path("pair2_fixed.usd"), 0.5
         ),
         "held_material": {
             "diffuse_color": (0.75, 0.75, 0.78),  # steel shaft
@@ -444,6 +444,39 @@ ASSET_PAIRS: list[dict] = [
         },
         "fixed_material": {
             "diffuse_color": (0.5, 0.5, 0.55),  # metal housing
+            "metallic": 0.7,
+            "roughness": 0.4,
+        },
+    },
+    # --- pair3 (peg=steel shaft, fixed=housing assembly) ---
+    {
+        "held_cfg": HeldAssetCfg(
+            usd_path=_asset_path("pair3_peg.usd"),
+            diameter=0.0071,
+            height=0.072,
+            mass=0.020,
+            friction=0.5,
+        ),
+        "fixed_cfg": FixedAssetCfg(
+            usd_path=_asset_path("pair3_fixed.usd"),
+            diameter=0.054,
+            height=0.023,
+            base_height=0.001,
+            friction=0.5,
+        ),
+        "held_art": _make_asset_cfg(
+            "/World/envs/env_.*/HeldAsset", _asset_path("pair3_peg.usd"), 0.020, disable_gravity=True
+        ),
+        "fixed_art": _make_fixed_asset_cfg(
+            "/World/envs/env_.*/FixedAsset", _asset_path("pair3_fixed.usd"), 0.5
+        ),
+        "held_material": {
+            "diffuse_color": (0.7, 0.7, 0.73),
+            "metallic": 1.0,
+            "roughness": 0.3,
+        },
+        "fixed_material": {
+            "diffuse_color": (0.55, 0.55, 0.58),
             "metallic": 0.7,
             "roughness": 0.4,
         },

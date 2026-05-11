@@ -47,12 +47,12 @@ params:
       layer_norm: True
 
   load_checkpoint: True
-  load_path: /workspace/isaaclab/logs/rl_games/Forge/marvin_panda_peg_insert-0422/nn/Forge.pth
+  load_path: /workspace/isaaclab/logs/rl_games/Forge_Pair12/finetune_pair12/nn/Forge_Pair12.pth
 
   config:
-    name: Forge_Pair12
+    name: Forge_Pair123
     device: cuda:0
-    full_experiment_name: finetune_pair12
+    full_experiment_name: finetune_pair123
     env_name: rlgpu
     multi_gpu: False
     ppo: True
